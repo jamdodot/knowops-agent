@@ -110,7 +110,9 @@ graph TB
 
 ```
 knowops-agent/
-├─ java-service/                   # Spring Boot：文档、ACL、审批、审计、A2A client
+├─ java-service/                   # Spring Boot：上传、ACL、Agent 网关（REST/SSE）
+│  ├─ contract/                    # codegen 生成的契约 DTO/接口（api/openapi.yaml → Java）
+│  └─ app/                         # 业务服务：三接口 + 主体解析 + SSE 转发（10 条单测）
 ├─ agent-service/                  # Python 单一镜像，两个入口
 │  ├─ runtime/                     # 域无关内核（单文件模块，硬约束：不出现域名）
 │  │  ├─ graph.py                  # 状态机模板、节点包装（埋点/预算不可绕过）
@@ -217,6 +219,10 @@ python scripts/kw.py smoke-m0
 # 7) 起服务（mock 模型，无网络）
 python scripts/kw.py serve-knowledge      # :8001，/healthz + /v1/knowledge/answers
 python scripts/kw.py serve-fulfillment    # :8002，/healthz + /v1/fulfillment/tasks
+
+# 8) Java 业务服务（上传 / ACL 计算 / Agent 网关；需要 JDK17 + Maven）
+python scripts/kw.py java-build           # 构建 + 安装 contract DTO
+python scripts/kw.py java-test            # 10 条单测：主体解析 / 契约反序列化 / 上传
 ```
 
 `scripts/kw.py` 是唯一实现，`Makefile` 只是薄封装——**Windows 默认没有 make**，两套实现必然漂移。

@@ -19,6 +19,10 @@ build/
 dist/
 node_modules/
 
+# Java 构建产物与上传落盘目录
+target/
+data/
+
 # 离线录制：精确回放文件（recordings/{render_sha256}.json）是可再生产物，不提交；
 # 但 mock_llm.yaml 是规则回放 fixture，测试与 smoke-m0 依赖它，必须提交
 recordings/*.json

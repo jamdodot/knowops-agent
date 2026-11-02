@@ -17,6 +17,8 @@
     python scripts/kw.py serve-fulfillment
     python scripts/kw.py test         # pytest
     python scripts/kw.py smoke-m0     # 双域假链路端到端（不需要 docker 与网络）
+    python scripts/kw.py java-build   # 构建 Java 业务服务（上传 / ACL / 网关）
+    python scripts/kw.py java-test    # 跑 Java 单元测试
 """
 
 from __future__ import annotations
@@ -250,6 +252,24 @@ def cmd_smoke_m0() -> None:
     subprocess.run([sys.executable, str(ROOT / "scripts" / "smoke_m0.py")], env=env, check=False)
 
 
+def cmd_java_build() -> None:
+    """构建 Java 业务服务（app 模块，含契约 DTO）。"""
+    mvn = shutil.which("mvn")
+    if not mvn:
+        die("未找到 mvn，无法构建 Java 服务（需要 JDK17 + Maven）")
+    subprocess.run([mvn, "-q", "-pl", "app", "-am", "install", "-DskipTests"],
+                   cwd=ROOT / "java-service", check=False)
+
+
+def cmd_java_test() -> None:
+    """跑 Java 单元测试（ACL 主体解析 / 契约反序列化 / 上传）。"""
+    mvn = shutil.which("mvn")
+    if not mvn:
+        die("未找到 mvn，无法跑 Java 测试（需要 JDK17 + Maven）")
+    subprocess.run([mvn, "-q", "-pl", "app", "-am", "test"],
+                   cwd=ROOT / "java-service", check=False)
+
+
 # ---------------------------------------------------------------------------
 # verify：静态自检（不需要数据库，可进 CI）
 # ---------------------------------------------------------------------------
@@ -430,6 +450,8 @@ COMMANDS = {
     "serve-fulfillment": (cmd_serve_fulfillment, "起排障域（:8002）"),
     "test": (cmd_test, "跑 pytest"),
     "smoke-m0": (cmd_smoke_m0, "双域假链路端到端验收"),
+    "java-build": (cmd_java_build, "构建 Java 业务服务（上传/ACL/网关）"),
+    "java-test": (cmd_java_test, "跑 Java 单元测试"),
 }
 
 
