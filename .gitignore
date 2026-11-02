@@ -1,0 +1,32 @@
+# 本地环境
+.env
+deploy/.env
+.venv/
+venv/
+
+# WorkBuddy 项目级工作记忆（个人笔记，不进仓库）
+.workbuddy/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# 构建与临时产物（生成的契约代码是提交物，不在这里忽略）
+build/
+dist/
+node_modules/
+
+# 离线录制：精确回放文件（recordings/{render_sha256}.json）是可再生产物，不提交；
+# 但 mock_llm.yaml 是规则回放 fixture，测试与 smoke-m0 依赖它，必须提交
+recordings/*.json
+recordings/*.jsonl
+
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db

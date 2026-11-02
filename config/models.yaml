@@ -1,0 +1,192 @@
+# KnowOps 模型接入配置
+#
+# 决策依据：docs/adr/0003-模型默认走线上API.md
+# 配套说明：docs/08-模型接入方案.md、docs/10-部署形态与硬件配置.md
+#
+# 一切按"能用线上就用线上"。私有部署只在 mode 切成 hybrid/local 时启用，
+# 且必须在 ADR-0003 的触发条件成立时才允许切。
+#
+# 密钥一律走环境变量，本文件不含明文 key，可直接提交仓库。
+
+version: 3
+mode: online          # online | hybrid | local | mock
+                      # mock 用于 CI 与断网演示，见 fallback.mock
+
+# ---------------------------------------------------------------------------
+# 1. 供应商（provider）
+# ---------------------------------------------------------------------------
+# 注意一个真实的不对称：chat 和 embedding 基本都兼容 OpenAI 协议，
+# 但 **rerank 没有统一标准**（Jina 风格 /rerank vs Cohere 风格 /rerank），
+# 所以 rerank 必须在每个 provider 里显式声明路径，不能假设"一套 SDK 通吃"。
+
+providers:
+  deepseek:
+    kind: openai_compat
+    base_url: https://api.deepseek.com
+    api_key: ${DEEPSEEK_API_KEY}
+    timeout_s: 60
+    max_retries: 2
+    rpm_limit: 500
+    notes: |
+      2026-11 核对：deepseek-chat / deepseek-reasoner 已于 2026-07-24 退役，
+      请求会失败。当前可用 deepseek-v4-flash（新别名 deepseek-flash 指向 V4.1-Flash）
+      与 deepseek-v4-pro。SDK 与 base_url 全部不变，只是模型字符串变了。
+      DeepSeek 不提供 embedding，也不提供 rerank，必须另配 provider。
+
+  siliconflow:
+    kind: openai_compat
+    base_url: https://api.siliconflow.cn/v1
+    api_key: ${SILICONFLOW_API_KEY}
+    timeout_s: 30
+    max_retries: 3
+    rpm_limit: 1000
+    endpoints:
+      chat: /chat/completions
+      embed: /embeddings
+      rerank: /rerank          # 非 OpenAI 标准路径，独立封装
+    notes: |
+      embedding 与 rerank 有免费额度但限流，超频返回 429，
+      所以入库任务必须走令牌桶 + 队列削峰，不能裸并发。
+
+# ---------------------------------------------------------------------------
+# 2. 按角色路由（不要一个模型打天下）
+# ---------------------------------------------------------------------------
+# 原则：生成/规划用强模型；判断用便宜快模型；judge 必须与生成异源。
+
+roles:
+
+  generate:                      # 最终答案
+    provider: deepseek
+    model: deepseek-v4-flash
+    temperature: 0.2
+    max_tokens: 2048
+    timeout_s: 60
+
+  plan:                          # 假设生成、查询改写、检索决策
+    provider: deepseek
+    model: deepseek-v4-flash
+    temperature: 0.3
+    max_tokens: 1024
+    timeout_s: 30
+    notes: 规划错一步后面全错，这里不要降到小模型。
+
+  classify:                      # relevance / grade / 意图分流
+    provider: deepseek
+    model: deepseek-v4-flash
+    temperature: 0.0
+    max_tokens: 128
+    timeout_s: 10
+    cache: true                  # 高频且幂等，结果可缓存
+
+  extract:                       # 实体关系抽取（建图）
+    provider: deepseek
+    model: deepseek-v4-flash
+    temperature: 0.0
+    max_tokens: 2048
+    timeout_s: 60
+    notes: 量大、格式要求严，用 JSON 模式 + 校验重试。
+
+  judge:                         # 评测打分（RAGAS 的 LLM 部分）
+    provider: siliconflow         # 关键：与 generate 不同厂商
+    model: ${JUDGE_MODEL}         # 在此处填一个非 DeepSeek 的强模型
+    temperature: 0.0
+    max_tokens: 1024
+    timeout_s: 30
+    notes: |
+      必须与 generate 异源。同模型自评会偏好自己的输出风格，
+      faithfulness 会系统性虚高 5~10 个点，评测体系从根上不可信。
+      具体模型 id 以硅基流动模型列表为准，挑一个非 DeepSeek 的强模型。
+
+  embed_dense:                   # 向量化（入库 + 查询，必须同源）
+    provider: siliconflow
+    model: BAAI/bge-m3
+    dim: 1024
+    batch_size: 32
+    timeout_s: 30
+    notes: 走 /embeddings，只返回 dense；sparse 由 PG 的 BM25 提供，不指望这里。
+
+  rerank:                        # 召回 top-50 → 重排 → top-8
+    provider: siliconflow
+    model: BAAI/bge-reranker-v2-m3
+    top_n_in: 50
+    top_n_out: 8
+    timeout_s: 10
+    notes: 超时即降级跳过重排，但必须在响应里带 degraded:[rerank]。
+
+# ---------------------------------------------------------------------------
+# 3. embedding 版本锁（三锁，不满足直接抛错，绝不降级）
+# ---------------------------------------------------------------------------
+# 为什么 version 要自己维护：托管 API 通常不返回模型构建版本，
+# 但供应商会静默升级权重。所以这里锁的是"我们认定的一致性契约"。
+# 一旦怀疑供应商换了权重（Recall 突然掉），手动 bump 到 v2 并重新评测。
+
+embed_lock:
+  model_id: BAAI/bge-m3
+  version: "v1"
+  dim: 1024
+  normalize: true
+  metric: cosine
+  on_mismatch: raise             # raise | warn（生产必须 raise）
+
+# ---------------------------------------------------------------------------
+# 4. 降级链（每一级都必须显式记录，禁止静默降级）
+# ---------------------------------------------------------------------------
+# 静默降级是线上事故最常见的形态：功能还在跑，效果掉了一半，没人知道。
+# 每次降级都要写进响应头 degraded[] 与 trace。
+
+fallback:
+
+  rerank:
+    on_timeout: skip
+    on_error: skip
+    on_empty: skip
+    mark: degraded:rerank
+
+  generate:
+    primary: deepseek/deepseek-v4-flash
+    secondary: siliconflow/${GENERATE_FALLBACK_MODEL}
+    on_both_fail: refuse           # 宁可明确失败，不给编造的答案
+    mark: degraded:generate
+
+  classify:
+    on_error: default_keep         # 判断失败时保守保留，宁可多检索
+    mark: degraded:classify
+
+  judge:
+    on_error: null                 # 打分失败就记 null，不猜分数，不污染评测
+    mark: degraded:judge
+
+  mock:
+    enabled: ${MOCK_ENABLED:false}
+    dir: recordings/               # 按 hash(prompt) 命中录制响应
+    banner: "演示模式"             # 界面上必须标注，不假装在线
+
+# ---------------------------------------------------------------------------
+# 5. 预算与限流（防止一次跑评测烧掉一周预算）
+# ---------------------------------------------------------------------------
+
+budget:
+  daily_usd: 5.0
+  monthly_usd: 50.0
+  on_exceed: hard_stop             # hard_stop | warn
+  per_trace_token_cap: 60000
+
+limits:
+  embed_rps: 8                     # 免费额度会 429，保守起步
+  chat_rps: 5
+  backoff: exponential             # 初始 1s，上限 30s，带抖动
+
+# ---------------------------------------------------------------------------
+# 6. 成本参考（仅用于预算估算，不要作为计费依据）
+# ---------------------------------------------------------------------------
+# 2026-11 核对，DeepSeek V4.1-Flash（2026-09 GA）：
+#   off-peak  $0.15 / 1M input(cache miss)、$0.003 / 1M input(cache hit)、$0.60 / 1M output
+#   peak      上述价格 ×2（UTC 01:00-04:00 与 06:00-10:00）
+# 价格调整频繁，上线前以官方页面为准。把估算写进配置而不是写进文档，
+# 是因为文档一改就忘，配置每次跑都会读到。
+cost_ref:
+  deepseek_v4_flash:
+    input_miss_usd_per_m: 0.15
+    input_hit_usd_per_m: 0.003
+    output_usd_per_m: 0.60
+    peak_multiplier: 2.0

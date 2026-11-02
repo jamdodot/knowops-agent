@@ -1,0 +1,19 @@
+# Agent 服务运行时依赖（Python 侧）。
+# 开发期额外依赖见 requirements-dev.txt。
+#
+# 一条纪律：模型调用全部走 API（ADR-0003），所以这里没有任何 torch / transformers。
+# 唯一的重依赖是 langgraph——它承担编排与中断恢复（07 §4），这部分不自研。
+
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30
+pydantic>=2.7,<3.0
+pyyaml>=6.0
+httpx>=0.27
+jsonschema>=4.22
+
+# 编排内核：复用，不自研（07 §4「中断恢复与任意点重放自研成本极高」）
+langgraph>=1.0,<2.0
+
+# 观测：只用标准 API + SDK，不引业务耦合
+opentelemetry-api>=1.25
+opentelemetry-sdk>=1.25

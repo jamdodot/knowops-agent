@@ -1,0 +1,79 @@
+# =============================================================================
+# KnowOps Agent — M0 依赖编排
+# =============================================================================
+# M0 只起一个容器：paradedb（自带 pgvector + pg_search），常驻约 1.5GB。
+# mysql / neo4j / redis / minio / langfuse 按里程碑渐进加入（04 §2 的纪律：
+# 每加一个组件都必须能说出它的不可替代性）。
+#
+# 三个 Windows 专属坑（10 §4）已经在这里处理掉：
+#   ① 端口默认 5433：本机 5432 常被已安装的 PostgreSQL 占用
+#   ② 数据卷用 named volume，不挂 /mnt/c：跨文件系统 IO 慢一个数量级
+#   ③ WSL2 内存上限要在 C:\Users\<你>\.wslconfig 里设 memory=10GB，
+#      这条 compose 管不了，但不做的话 16GB 机器等于 8GB 机器
+#
+# 用法：make up / make down / make clean
+# =============================================================================
+
+name: knowops
+
+services:
+
+  pg:
+    # 落地前先确认 tag：docker pull paradedb/paradedb:latest
+    # 该镜像自带的 pg_search 社区版与企业版功能边界不同（10 §5 已提示）。
+    # 若 pg_search 不可用，01_schema.sql 里的 GIN(tsv) 是退路，M0 仍可跑。
+    image: paradedb/paradedb:latest
+    container_name: knowops-pg
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: ${PG_USER:-knowops}
+      POSTGRES_PASSWORD: ${PG_PASSWORD:-knowops_dev_only}
+      POSTGRES_DB: ${PG_DB:-knowops}
+      # 不显式设 locale：中文分词由 pg_search 的 tokenizer 负责，
+      # 不依赖 DB collation，避免镜像之间 C.UTF-8 / en_US.utf8 的差异。
+      TZ: Asia/Shanghai
+
+    command:
+      - "postgres"
+      # pg_search 必须预加载，否则 CREATE EXTENSION 失败
+      - "-c"
+      - "shared_preload_libraries=pg_search"
+      - "-c"
+      - "max_connections=100"
+      # 16GB 目标环境下给 PG 512MB 共享缓冲足够；剩下留给 OS page cache
+      - "-c"
+      - "shared_buffers=512MB"
+      - "-c"
+      - "work_mem=32MB"
+      - "-c"
+      - "log_min_duration_statement=200"
+
+    ports:
+      - "${PG_PORT:-5433}:5432"
+
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # 初始化脚本按文件名顺序执行：01 建表 → 02 种子 → 03 BM25 索引
+      - ./init:/docker-entrypoint-initdb.d:ro
+      # 冒烟脚本不自动执行，由 make smoke-db 显式调起
+      - ./smoke:/smoke:ro
+
+    shm_size: 256mb
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_USER:-knowops} -d ${PG_DB:-knowops}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+    # 内存上限按 10 §3 档位一：PG 常驻 1.2~1.5GB
+    deploy:
+      resources:
+        limits:
+          memory: 1500M
+
+volumes:
+  pgdata:
+    name: knowops-pgdata

@@ -1,0 +1,66 @@
+# Mock 录制（`config/models.yaml` 的 fallback.mock.dir = recordings/）。
+#
+# 命中顺序：
+#   1. recordings/{render_sha256}.json —— 精确回放，键是渲染指纹（docs/12 §4.1）
+#   2. 本文件按 prompt id 的默认应答
+#   3. "{}"
+#
+# 为什么允许规则命中：M0 要验证的是一条**分支**链路（寒暄直答 vs 检索），
+# 而固定应答没法产生分支。规则只用于本地假链路，不参与任何评测分数。
+
+version: 1
+
+responses:
+
+  # ---------------------------------------------------------------- 知识域
+  knowledge.analyze_intent:
+    default: '{"need_retrieval": true, "query_type": "process", "reason": "审批流程类问题"}'
+    rules:
+      - contains: "你好"
+        text: '{"need_retrieval": false, "query_type": "chitchat", "reason": "寒暄"}'
+      - contains: "谢谢"
+        text: '{"need_retrieval": false, "query_type": "chitchat", "reason": "致谢"}'
+
+  knowledge.plan:
+    default: '{"sub_questions": ["跨部门资金调拨的审批层级"], "need_graph": false}'
+
+  knowledge.grade_evidence:
+    default: '{"sufficiency": 0.86, "relevance": {}, "missing": ""}'
+    rules:
+      - contains: "无关"
+        text: '{"sufficiency": 0.1, "relevance": {}, "missing": "证据与问题无关"}'
+
+  knowledge.rewrite_query:
+    default: '{"rewritten": ["资金调拨审批权限 金额档位"], "why": "换成制度用语"}'
+
+  # 引用占位符是 {eid}，不是 {{eid}}——双花括号是模板变量语法，会被渲染器吃掉。
+  knowledge.synthesize:
+    default: '跨部门资金调拨按金额分级审批：调拨金额超过 10 万元需总经理审批 {e_doc_881_c2}。单笔 5 万元以下的费用报销由部门负责人审批 {e_doc_881_c1}。'
+    rules:
+      - contains: "你好"
+        text: "你好，我是制度问答助手，可以问报销、调拨、采购相关的规定。"
+      - contains: "付款"
+        text: "付款需在合同签订后 30 日内提交付款申请 {e_doc_902_c1}。"
+
+  # ---------------------------------------------------------------- 排障域
+  fulfillment.analyze_symptom:
+    default: '{"order_id": "O20261102001", "stage": "transport", "phenomenon": "物流轨迹三天未更新，承诺时效已过", "time_window": "2026-11-01", "missing": []}'
+
+  fulfillment.build_hypotheses:
+    default: '{"hypotheses": [{"id": "h1", "root_cause": "carrier_delay", "prior": 0.5, "checks": ["lookup_order", "search_logs"]}, {"id": "h2", "root_cause": "warehouse_outbound_delay", "prior": 0.3, "checks": ["lookup_order"]}, {"id": "h3", "root_cause": "inventory_mismatch", "prior": 0.2, "checks": ["query_metric"]}]}'
+
+  fulfillment.evaluate:
+    default: '{"verdict": "support", "confidence": 0.87, "reason": "承运商网点滞留，轨迹停在分拨中心"}'
+    rules:
+      - contains: "warehouse_outbound_delay"
+        text: '{"verdict": "refute", "confidence": 0.82, "reason": "出库 09:12 已交接承运商，拣货打包无异常"}'
+      - contains: "inventory_mismatch"
+        text: '{"verdict": "irrelevant", "confidence": 0.35, "reason": "库存差异率 0.08%，无异常"}'
+
+  fulfillment.compose_diagnosis:
+    default: |
+      结论：订单 O20261102001 延误由承运商分拨中心滞留导致，与仓库出库、库存无关，影响范围仅该订单所属批次。
+
+      证据链：查订单看到出库时间正常（11-01 09:12 已交接承运商），排除仓库积压；搜物流日志看到轨迹停在武汉分拨中心 72 小时，同批次其他订单已签收，排除区域性运力中断；查库存指标无差异，排除库存虚占。
+
+      建议动作：向承运商发起重推（retry_push_carrier）。风险：重推会影响承运商结算口径，且该单已超承诺时效，需人工确认是否同步触发赔付流程。

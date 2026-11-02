@@ -1,0 +1,40 @@
+# 知识域 Domain Pack
+#
+# 与 docs/01 §3.2 的样例一一对应。两份差异是刻意的、且已回写文档：
+#   version / prompts —— 前者让 pack 能被灰度对比，后者是 12 §2 要求的 prompt 登记入口。
+
+name: knowledge
+version: 1
+entry: api/main_knowledge.py
+graph: knowledge_agentic_rag
+
+tools: [hybrid_retrieve, doc_fetch]
+
+prompts:
+  - knowledge.analyze_intent
+  - knowledge.plan
+  - knowledge.grade_evidence
+  - knowledge.rewrite_query
+  - knowledge.synthesize
+  - knowledge.smalltalk
+
+# 知识域的长期记忆是"用户偏好"，不是历史案例（docs/07 §1）
+memory: { working: true, semantic: true, episodic: false }
+
+# max_steps=8：analyze→plan→retrieve→grade→synthesize→verify 是 6 步，
+# 留出 2 步给一次 query 改写回环。卡到 6 会让"改写一次"直接撞预算，
+# 于是改写路径永远跑不到——这种"看起来配置了、实际不可达"的阈值最难查。
+stop:
+  max_steps: 8
+  budget_tokens: 12000
+  evidence_threshold: 0.75
+  on_budget: abstain
+
+guard:
+  injection_check: true
+  action_whitelist: []
+  forbidden_actions: []
+
+output: { schema: cited_answer }
+
+eval: { datasets: [golden, unauthorized, injection, no_answer] }

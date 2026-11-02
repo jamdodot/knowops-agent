@@ -1,0 +1,14 @@
+# 开发期依赖（契约 codegen + 三方自检 + 测试）。
+# 运行时依赖在 requirements.txt（FastAPI / LangGraph / OTel 等）。
+#
+#   python -m venv .venv && source .venv/Scripts/activate
+#   pip install -r requirements.txt -r requirements-dev.txt
+#   python scripts/kw.py verify
+#   python scripts/kw.py test
+
+pyyaml>=6.0
+pydantic>=2.9
+pglast>=7.0                      # libpg_query 绑定：用真实 PG 解析器校验 SQL，不需要起库
+datamodel-code-generator[http]>=0.30   # openapi.yaml → pydantic v2（单文件，extra="forbid"）
+pytest>=8.0                       # 测试套件（41 条，覆盖契约/事件顺序/任务恢复/抽象隔离等）
+

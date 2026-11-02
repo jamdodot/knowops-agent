@@ -1,0 +1,704 @@
+openapi: 3.1.0
+
+# KnowOps Agent — Java 网关 ↔ Python Agent 服务契约（唯一真相源）
+#
+# 配套说明：docs/13-服务间契约.md
+# 生成物：agent-service/api/schemas.py（pydantic v2, extra="forbid"）
+#         java-service/dto（Jackson, FAIL_ON_UNKNOWN_PROPERTIES=true）
+# 变更规则：只增可选字段；删字段/改类型/改语义 必须新开 /v2（见 docs/13 §7.1）
+#
+# 注意：A2A（knowledge → fulfillment）走 JSON-RPC 2.0，不在本文件描述，
+# 见 docs/01 §9.2 与 docs/13 §8。
+
+info:
+  title: KnowOps Agent Inter-Service Contract
+  version: "1.0.0"
+  description: |
+    Java 业务服务调用 Python Agent 服务的三条通道中的两条（REST + SSE）。
+    铁律：
+    1. 请求体只透传 subject_ctx（主体属性 + 版本），**不允许**出现 allowed_doc_ids / visible_docs；
+    2. SSE 终止事件 done 与 error **有且仅有一个**；
+    3. 降级不算错误（degraded[]），拒答不是错误（finish_reason=abstained）。
+
+servers:
+  - url: http://localhost:8001
+    description: knowledge 入口（同镜像，DOMAIN=knowledge）
+  - url: http://localhost:8002
+    description: fulfillment 入口（同镜像，DOMAIN=fulfillment）
+
+tags:
+  - name: health
+  - name: knowledge
+  - name: fulfillment
+
+# ---------------------------------------------------------------------------
+# 公共参数
+# ---------------------------------------------------------------------------
+components:
+
+  parameters:
+    ContractVersion:
+      name: X-Contract-Version
+      in: header
+      required: true
+      schema: {type: string, enum: ["1.0.0"]}
+      description: 与 meta.contract_version 双向声明；不匹配返回 426，不做静默兼容。
+    DeadlineMs:
+      name: X-Deadline-Ms
+      in: header
+      required: false
+      schema: {type: integer, minimum: 500, maximum: 120000, default: 15000}
+      description: 剩余预算毫秒（相对值，非绝对时间戳——避免跨机时钟漂移误判）。
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema: {type: string, minLength: 16, maxLength: 128}
+      description: sha256(session_id|turn_seq|query|subject_epoch)，24h 窗口。必须含 subject_epoch，否则权限变更后会重放旧答案。
+    TraceParent:
+      name: traceparent
+      in: header
+      required: false
+      schema: {type: string}
+      description: W3C Trace Context，跨进程 trace 链路（见 docs/14）。
+    TaskId:
+      name: task_id
+      in: path
+      required: true
+      schema: {type: string, pattern: "^tsk_[A-Za-z0-9]{16,32}$"}
+
+  headers:
+    Degraded:
+      description: 降级标记（与 meta.degraded 同源；头给网关告警，事件给前端展示）。
+      schema: {type: string, example: "rerank,classify"}
+    RetryAfterMs:
+      schema: {type: integer}
+
+  # -------------------------------------------------------------------------
+  # 数据模型
+  # -------------------------------------------------------------------------
+  schemas:
+
+    SubjectContext:
+      type: object
+      additionalProperties: false
+      description: |
+        唯一合法的权限载体。鉴权条件由 Python 拼进检索 SQL（docs/05 §3）。
+        刻意不含 allowed_doc_ids —— 那是"先算清单再过滤"的老路。
+      required: [user_id, account_status, dept_paths, roles, subject_epoch]
+      properties:
+        user_id:
+          type: string
+          example: u_2048
+        account_status:
+          type: string
+          enum: [active, disabled, resigned]
+          description: 非 active 一票否决（ADR-0001 主体失效优先于所有授权求值）。
+        dept_paths:
+          type: array
+          maxItems: 32
+          items: {type: string}
+          description: 自身 + 所有祖先，层级通常 ≤ 6。父部门授权天然覆盖子孙。
+          example: ["D10", "D10.3", "D10.3.7"]
+        roles:
+          type: array
+          items: {type: string}
+          example: ["employee", "fulfillment_ops"]
+        groups:
+          type: array
+          items: {type: string}
+          description: 共享组（授权主体 > 20 时收敛）。可为空。
+          example: ["sg_17"]
+        approval_doc_ids:
+          type: array
+          maxItems: 50
+          items: {type: string}
+          description: |
+            例外层（主体租约），走 = ANY()，不物化进 acl_jsonb。
+            软上限 50：超限降级为强一致 join（ADR-0001 缓解措施）。
+        subject_epoch:
+          type: integer
+          format: int64
+          minimum: 0
+          description: 主体属性版本，任一变则 +1。用于缓存 key / 审计对齐 / 幂等键。
+
+    Budget:
+      type: object
+      additionalProperties: false
+      properties:
+        max_tokens: {type: integer, default: 12000}
+        max_steps: {type: integer, default: 5}
+        max_cost_usd: {type: number, format: float, default: 0.05}
+
+    AnswerRequest:
+      type: object
+      additionalProperties: false
+      required: [query, subject_ctx, session_id]
+      properties:
+        query:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        subject_ctx: {$ref: "#/components/schemas/SubjectContext"}
+        session_id: {type: string, example: s_8831}
+        thread_id:
+          type: string
+          description: 图 checkpoint 的 key（docs/07 §3.1）；缺省取 session_id。
+        turn_seq:
+          type: integer
+          minimum: 1
+          description: 会话内轮次，参与幂等键与 chat_turn 关联。
+        budget: {$ref: "#/components/schemas/Budget"}
+        config_version:
+          type: string
+          description: 灰度切流用；缺省取服务端当前生效版本（docs/12 §5.1）。
+        domain_hint:
+          type: string
+          enum: [auto, fact, multi_hop, chitchat]
+          default: auto
+          description: 仅用于评测复现，不参与线上分流逻辑。
+
+    FulfillmentTaskRequest:
+      type: object
+      additionalProperties: false
+      required: [symptom, subject_ctx, session_id]
+      properties:
+        symptom:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          example: 订单 SO20261101003 一直卡在已出库未签收
+        subject_ctx: {$ref: "#/components/schemas/SubjectContext"}
+        session_id: {type: string}
+        scope:
+          type: object
+          additionalProperties: false
+          description: 跨域/跨服务的最小数据范围，不是权限清单（docs/05 §7）。
+          properties:
+            warehouse_ids: {type: array, items: {type: string}}
+            time_range:
+              type: object
+              properties:
+                from: {type: string, format: date-time}
+                to: {type: string, format: date-time}
+        budget: {$ref: "#/components/schemas/Budget"}
+        config_version: {type: string}
+
+    ApprovalDecision:
+      type: object
+      additionalProperties: false
+      required: [approval_id, decision]
+      properties:
+        approval_id: {type: string, example: ar_5521}
+        decision:
+          type: string
+          enum: [approved, rejected]
+        comment:
+          type: string
+          maxLength: 500
+          description: 拒绝原因会回灌给 Agent 重新规划（docs/01 §5.4）。
+
+    ResumeRequest:
+      type: object
+      additionalProperties: false
+      required: [task_id, subject_ctx]
+      properties:
+        task_id: {type: string}
+        subject_ctx:
+          $ref: "#/components/schemas/SubjectContext"
+          description: 必须重传并重新校验——恢复不是"延续旧权限"（docs/05 §5 出口 6）。
+        approval: {$ref: "#/components/schemas/ApprovalDecision"}
+        clarification:
+          type: object
+          additionalProperties: false
+          description: 对应 input_required(kind=clarification) 的补充信息。
+          properties:
+            fields:
+              type: object
+              additionalProperties: true
+        last_event_id:
+          type: integer
+          description: 断线续传水位；服务端从该点之后继续推。
+
+    Citation:
+      type: object
+      additionalProperties: false
+      required: [eid, doc_id, title]
+      properties:
+        eid:
+          type: string
+          description: 证据 id。正文只能引用已出现过的 eid，编号由前端渲染（引用是数据不是文本）。
+          example: e_3
+        doc_id: {type: string, example: doc_881}
+        title: {type: string}
+        page_no: {type: integer, minimum: 1}
+        section_path: {type: string}
+        acl_epoch:
+          type: integer
+          format: int64
+          description: 引用时刻该文档的权限版本；与当前值不一致则置灰"原文已失权"（docs/07 §3.3）。
+
+    Usage:
+      type: object
+      additionalProperties: false
+      properties:
+        input_tokens: {type: integer}
+        output_tokens: {type: integer}
+        cost_usd: {type: number, format: float}
+        steps: {type: integer, description: 图执行步数}
+        retrieval_rounds: {type: integer}
+
+    ActionProposal:
+      type: object
+      additionalProperties: false
+      required: [approval_id, action_type, risk_level]
+      description: Agent 只提议不执行；真实执行由 Java 在审批通过后进行（docs/05 §7）。
+      properties:
+        approval_id: {type: string}
+        action_type: {type: string, example: retry_push_carrier}
+        params:
+          type: object
+          additionalProperties: true
+        risk_level: {type: string, enum: [low, medium, high]}
+
+    Error:
+      type: object
+      additionalProperties: false
+      required: [code, message, retryable]
+      properties:
+        code:
+          type: string
+          enum:
+            - INVALID_SCHEMA
+            - SUBJECT_MISSING
+            - SUBJECT_DISABLED
+            - CONTRACT_VERSION_UNSUPPORTED
+            - RATE_LIMITED
+            - UPSTREAM_UNAVAILABLE
+            - MODEL_TIMEOUT
+            - DEADLINE_EXCEEDED
+            - BUDGET_EXCEEDED
+            - ACL_SNAPSHOT_STALE
+            - INJECTION_BLOCKED
+            - DUPLICATE_INFLIGHT
+            - TASK_NOT_FOUND
+            - TASK_STATE_CONFLICT
+            - INTERNAL
+        message:
+          type: string
+          description: 必须脱敏（不含文档正文、手机号、内部代号）。
+        retryable: {type: boolean}
+        retry_after_ms: {type: integer}
+        trace_id: {type: string}
+
+    Task:
+      type: object
+      additionalProperties: false
+      required: [task_id, state, session_id, created_at]
+      properties:
+        task_id: {type: string, example: tsk_7f3a91c2d4e5}
+        state:
+          type: string
+          enum: [submitted, working, input_required, completed, failed, canceled]
+          description: 与 A2A 的 TASK_STATE_* 一一对应，同一套状态机两种绑定（docs/13 §8）。
+        session_id: {type: string}
+        pending:
+          type: object
+          additionalProperties: false
+          description: 仅 state=input_required 时存在。
+          properties:
+            kind: {type: string, enum: [approval, clarification]}
+            approval: {$ref: "#/components/schemas/ActionProposal"}
+            question: {type: string}
+        result:
+          type: object
+          additionalProperties: false
+          description: 仅 state=completed 时存在。
+          properties:
+            root_cause: {type: string}
+            confidence: {type: number, format: float, minimum: 0, maximum: 1}
+            summary:
+              type: string
+              description: |
+                诊断结论正文（截断到 500 字）。必须有这个字段，否则"断线后 GET 查状态"
+                只能拿到根因标签，拿不到报告正文，用户想看得重连——而重连在 Task 语义里
+                是 resume，不是重放，会再跑一次工具调用。
+                正文全文仍以 SSE delta 为准，这里只保证断流可读。
+            evidence:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                properties:
+                  hypothesis_id: {type: string}
+                  verdict: {type: string, enum: [support, refute, irrelevant]}
+                  summary: {type: string}
+            citations:
+              type: array
+              items: {$ref: "#/components/schemas/Citation"}
+        usage: {$ref: "#/components/schemas/Usage"}
+        trace_id: {type: string}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+
+    # ---- SSE 事件体（data 字段的 JSON 结构） ------------------------------
+    DegradedEnum:
+      type: string
+      enum: [rerank, classify, generate, judge, graph, a2a, retrieval, memory, tool, acl]
+      description: |
+        降级来源。新增值属于允许的演进（docs/13 §7.1：客户端必须容忍未知枚举），
+        但取值必须收敛在这个枚举里，否则 `degraded[]` 会退化成自由文本。
+        retrieval/memory/tool/acl 是 M0 补的：原来的六个值只覆盖模型侧，
+        而真实降级大多数发生在检索（BM25 退化 GIN）、记忆（PG 不可用）、
+        工具（超时）、鉴权（审批集合走强一致 join）这四处。
+
+    MetaEvent:
+      type: object
+      additionalProperties: false
+      required: [trace_id, contract_version, config_version, degraded]
+      properties:
+        trace_id: {type: string}
+        contract_version: {type: string, example: "1.0.0"}
+        config_version: {type: string, example: "cfg-20261120-03"}
+        prompt_set_sha: {type: string, description: 整套 prompt 的环境指纹（docs/12 §4.1）}
+        acl_fingerprint:
+          type: string
+          description: subject_ctx 规范化后的 hash，用作语义缓存 key 的一部分。
+        degraded:
+          type: array
+          items: {$ref: "#/components/schemas/DegradedEnum"}
+          description: |
+            已显式降级标记，禁止静默降级（config/models.yaml 的纪律）。
+            注意它只能装**首帧之前**已知的降级——流一旦开始，HTTP 头与 meta 都已发出，
+            中途新增的降级只能落进 done.degraded（docs/13 §4.4）。
+
+    CitationEvent:
+      type: object
+      additionalProperties: false
+      required: [citations]
+      properties:
+        citations:
+          type: array
+          items: {$ref: "#/components/schemas/Citation"}
+
+    DeltaEvent:
+      type: object
+      additionalProperties: false
+      required: [text]
+      properties:
+        text: {type: string}
+        eids:
+          type: array
+          items: {type: string}
+          description: 本段文本引用的证据 id（正文里是占位符，不是 [1][2]）。
+
+    ProgressEvent:
+      type: object
+      additionalProperties: false
+      required: [node, step]
+      properties:
+        node: {type: string, example: build_hypotheses}
+        step: {type: integer}
+        note: {type: string}
+
+    EvidenceEvent:
+      type: object
+      additionalProperties: false
+      required: [hypothesis_id, verdict]
+      properties:
+        hypothesis_id: {type: string}
+        verdict: {type: string, enum: [support, refute, irrelevant]}
+        summary: {type: string}
+
+    ActionProposalEvent:
+      type: object
+      additionalProperties: false
+      required: [approval]
+      properties:
+        approval: {$ref: "#/components/schemas/ActionProposal"}
+
+    InputRequiredEvent:
+      type: object
+      additionalProperties: false
+      required: [task_id, kind]
+      properties:
+        task_id: {type: string}
+        kind: {type: string, enum: [approval, clarification]}
+        approval: {$ref: "#/components/schemas/ActionProposal"}
+        question: {type: string}
+        schema:
+          type: object
+          additionalProperties: true
+          description: kind=clarification 时，期望补充的字段契约。
+
+    DoneEvent:
+      type: object
+      additionalProperties: false
+      required: [finish_reason, usage]
+      properties:
+        finish_reason:
+          type: string
+          enum: [answered, abstained, escalated, degraded]
+          description: abstained 是设计内行为，不是错误（docs/01 §6）。
+        usage: {$ref: "#/components/schemas/Usage"}
+        citations:
+          type: array
+          items: {$ref: "#/components/schemas/Citation"}
+        task_id: {type: string}
+        degraded:
+          type: array
+          items: {$ref: "#/components/schemas/DegradedEnum"}
+          description: |
+            整个流的完整降级集合（含 meta 里那批 + 流中途新增的）。
+            没有这个字段，"rerank 超时"这类典型降级就无处可报：
+            meta 已经发出去了，而 HTTP 头同样改不了——于是它只能悄悄消失，
+            正好违反 models.yaml 那条"禁止静默降级"。
+
+    ErrorEvent: {$ref: "#/components/schemas/Error"}
+
+  responses:
+
+    SSEStream:
+      description: |
+        text/event-stream。帧格式：id / event / data(JSON)。
+        顺序约束：meta 必须首帧；citation 先于引用它的 delta；done 与 error 有且仅有一个。
+        事件类型见 x-sse-event-types。
+      headers:
+        X-Degraded: {$ref: "#/components/headers/Degraded"}
+      content:
+        text/event-stream:
+          schema:
+            type: string
+            x-sse-event-types:
+              - {event: meta, schema: "#/components/schemas/MetaEvent", required: true}
+              - {event: citation, schema: "#/components/schemas/CitationEvent"}
+              - {event: delta, schema: "#/components/schemas/DeltaEvent"}
+              - {event: progress, schema: "#/components/schemas/ProgressEvent"}
+              - {event: evidence, schema: "#/components/schemas/EvidenceEvent"}
+              - {event: action_proposal, schema: "#/components/schemas/ActionProposalEvent"}
+              - {event: input_required, schema: "#/components/schemas/InputRequiredEvent"}
+              - {event: done, schema: "#/components/schemas/DoneEvent", terminal: true}
+              - {event: error, schema: "#/components/schemas/ErrorEvent", terminal: true}
+
+    BadRequest:
+      description: 契约校验失败（含传入 allowed_doc_ids 这类契约外字段）。
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Unauthorized:
+      description: 缺 subject_ctx。
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Forbidden:
+      description: account_status != active（一票否决）。
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    Conflict:
+      description: 幂等冲突 / Task 状态不允许该操作 / ACL 快照落后。
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    TooManyRequests:
+      description: 供应商限流，按 retry_after_ms 重试。
+      headers:
+        Retry-After-Ms: {$ref: "#/components/headers/RetryAfterMs"}
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    UpstreamError:
+      description: 模型/依赖不可用，可重试（仅在未收到 meta 之前）。
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    VersionUnsupported:
+      description: 契约版本不匹配，需升级而非静默兼容。
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+    SafetyBlocked:
+      description: 护栏拦截（属于正常防护，不该计入系统错误率）。
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
+
+# ---------------------------------------------------------------------------
+paths:
+
+  /healthz:
+    get:
+      tags: [health]
+      summary: 存活探针（M0 验收项：两入口 /healthz 通）
+      operationId: getHealthz
+      security: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [status, domain]
+                properties:
+                  status: {type: string, enum: [ok]}
+                  domain: {type: string, enum: [knowledge, fulfillment]}
+                  version: {type: string}
+
+  /readyz:
+    get:
+      tags: [health]
+      summary: 就绪探针（PG / 模型供应商可用性）
+      operationId: getReadyz
+      security: []
+      responses:
+        "200":
+          description: 依赖就绪
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                properties:
+                  status: {type: string, enum: [ready, degraded]}
+                  deps:
+                    type: object
+                    additionalProperties:
+                      type: string
+                      enum: [ok, timeout, error]
+        "503":
+          description: 关键依赖不可用
+
+  /v1/knowledge/answers:
+    post:
+      tags: [knowledge]
+      summary: 知识问答（无状态，一条 SSE 流，P95 < 4s）
+      operationId: createKnowledgeAnswer
+      description: |
+        透传 subject_ctx，鉴权条件由 Python 拼进检索 SQL。
+        先吐 citation 骨架再吐正文（首 token < 1.5s）。
+      parameters:
+        - $ref: "#/components/parameters/ContractVersion"
+        - $ref: "#/components/parameters/DeadlineMs"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/TraceParent"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AnswerRequest"}
+      responses:
+        "200": {$ref: "#/components/responses/SSEStream"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "409": {$ref: "#/components/responses/Conflict"}
+        "422": {$ref: "#/components/responses/SafetyBlocked"}
+        "426": {$ref: "#/components/responses/VersionUnsupported"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "502": {$ref: "#/components/responses/UpstreamError"}
+
+  /v1/fulfillment/tasks:
+    post:
+      tags: [fulfillment]
+      summary: 创建诊断任务（有状态，支持 input_required / resume）
+      operationId: createFulfillmentTask
+      description: |
+        返回 201 + task_id，同时在响应体流里推 SSE。
+        命中审批或需补充信息时发 input_required 并**正常关闭流**，task 转 paused；
+        恢复用 POST /v1/fulfillment/tasks/{task_id}/resume。
+      parameters:
+        - $ref: "#/components/parameters/ContractVersion"
+        - $ref: "#/components/parameters/DeadlineMs"
+        - $ref: "#/components/parameters/IdempotencyKey"
+        - $ref: "#/components/parameters/TraceParent"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/FulfillmentTaskRequest"}
+      responses:
+        "201": {$ref: "#/components/responses/SSEStream"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "401": {$ref: "#/components/responses/Unauthorized"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "422": {$ref: "#/components/responses/SafetyBlocked"}
+        "426": {$ref: "#/components/responses/VersionUnsupported"}
+        "429": {$ref: "#/components/responses/TooManyRequests"}
+        "502": {$ref: "#/components/responses/UpstreamError"}
+
+  /v1/fulfillment/tasks/{task_id}:
+    get:
+      tags: [fulfillment]
+      summary: 查任务状态（幂等，断流后用它续接而不是重跑）
+      operationId: getFulfillmentTask
+      parameters:
+        - $ref: "#/components/parameters/ContractVersion"
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "200":
+          description: 任务快照
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Task"}
+        "404":
+          description: 任务不存在或已过 TTL
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+
+  /v1/fulfillment/tasks/{task_id}/resume:
+    post:
+      tags: [fulfillment]
+      summary: 恢复任务（审批结论 / 补充信息）
+      operationId: resumeFulfillmentTask
+      description: |
+        必须重传 subject_ctx 并重新校验——恢复不是"延续旧权限"。
+        返回一条新的 SSE 流，从 last_event_id 之后继续。
+      parameters:
+        - $ref: "#/components/parameters/ContractVersion"
+        - $ref: "#/components/parameters/DeadlineMs"
+        - $ref: "#/components/parameters/TaskId"
+        - $ref: "#/components/parameters/TraceParent"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/ResumeRequest"}
+      responses:
+        "200": {$ref: "#/components/responses/SSEStream"}
+        "400": {$ref: "#/components/responses/BadRequest"}
+        "403": {$ref: "#/components/responses/Forbidden"}
+        "404":
+          description: 任务不存在
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409":
+          description: 状态不允许 resume（如已完成 / 已取消）
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+
+  /v1/fulfillment/tasks/{task_id}/cancel:
+    post:
+      tags: [fulfillment]
+      summary: 取消任务
+      operationId: cancelFulfillmentTask
+      description: 取消 = 停止产生新 token，不回滚已产生内容；已消耗 token 照常计费。
+      parameters:
+        - $ref: "#/components/parameters/ContractVersion"
+        - $ref: "#/components/parameters/TaskId"
+      responses:
+        "202":
+          description: 已受理取消
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Task"}
+        "404":
+          description: 任务不存在
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Error"}
+        "409": {$ref: "#/components/responses/Conflict"}

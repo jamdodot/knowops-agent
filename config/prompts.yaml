@@ -1,0 +1,129 @@
+# KnowOps Prompt 治理策略配置
+#
+# 配套说明：docs/12-Prompt治理.md
+# 分工：prompts/manifest.yaml 是"登记表"（随 prompt 走），本文件是"策略表"（随环境走）。
+#
+# 本文件只放策略与阈值，不放 prompt 正文。
+# sha256 一律由 `make prompt-lock` 生成并回填，**手写 hash 没有意义**。
+
+version: 1
+
+# ---------------------------------------------------------------------------
+# 1. 三个 hash 的用途（混淆任意两个都会让评测不可信）
+# ---------------------------------------------------------------------------
+# template_sha256 = 模板原文 + frontmatter（含变量声明）  → 评测配置快照、审计
+# render_sha256   = 渲染后完整 messages 数组              → mock 录制回放（fallback.mock）
+# prompt_set_sha  = 全部生产 prompt 的 id:template_sha 排序后 hash → 灰度 / 回滚单位
+
+hash:
+  template:
+    include_frontmatter: true      # 必须含变量声明，否则契约变了 hash 不变
+    algorithm: sha256
+  render:
+    include: [system, messages, tool_descriptions]   # 工具描述也算 prompt，见 docs/12 §2
+    algorithm: sha256
+  set:
+    sort_key: id
+    format: "{id}:{template_sha256}"
+    algorithm: sha256
+
+# 评测跑批期间 prompt 集合发生变化时怎么办。
+# 与 models.yaml 的 embed_lock.on_mismatch 同一原则：宁可报错，不要静默产出不可比的数据。
+lock:
+  on_mismatch: raise               # raise | warn
+  bind_to: config_id               # 写进 eval_run.config_id（docs/03 §4.1）
+
+# ---------------------------------------------------------------------------
+# 2. 登记（这里只声明"必须存在"，内容在 prompts/manifest.yaml）
+# ---------------------------------------------------------------------------
+# role 对应 config/models.yaml 的 roles，便于按角色核算成本。
+# gate 对应本文 §3 的门禁档位。
+
+registry:
+  source: prompts/manifest.yaml
+  forbidden:
+    - prompt_literal_in_code       # 代码里出现裸字符串 prompt
+    - hot_update_from_db           # 从数据库读 prompt 正文
+    - acl_rules_in_prompt          # prompt 里出现权限/过滤类表述
+  required_fields: [id, path, version, role, owner, variables, gate]
+
+# ---------------------------------------------------------------------------
+# 3. 门禁（prompt 类 PR 额外四条，叠加在 docs/03 §6 之上）
+# ---------------------------------------------------------------------------
+# 阈值口径与 docs/03 §6 保持一致，避免同一件事两个数。
+
+gates:
+
+  render_test:                     # 渲染单测
+    no_placeholder_left: true       # 不允许残留 {{ }}
+    variables_strict: true          # extra=forbid，缺变量抛错
+    max_prompt_tokens_ratio: 0.30   # 不得超模型窗口 30%
+
+  regression:
+    smoke_subset: 50                # golden smoke
+    smoke_min_delta_pt: -2          # 成功率不得低于基线 -2pt
+    unauthorized_full: 80           # 越权集全量
+    leak_rate_max: 0               # 必须 = 0
+    injection_full: 100
+    injection_rate_max: 0.02        # 且不得高于基线 +2pt
+
+  single_variable:                 # A/B 纪律：与基线 config_id 的 diff
+    allowed_changed_keys: 1         # 只允许一项变化
+    exempt_keys: []                 # 例外需在此显式登记并写理由
+
+# ---------------------------------------------------------------------------
+# 4. 灰度（三档递进，不能跳级：离线 → 影子 → 切流）
+# ---------------------------------------------------------------------------
+# 切流键必须用稳定哈希，不能用随机数：
+# 同一用户在同一会话里来回切版本，历史上下文会前后矛盾。
+
+rollout:
+
+  mode: offline_first              # offline_first | shadow | canary | full
+  canary_key: "hash(user_id + domain) % 100"
+  steps: [5, 20, 50, 100]          # 单位：百分比
+  step_hold_minutes: 60
+
+  shadow:                          # 影子档：只落 trace，不返回给用户
+    enabled: true
+    consistency_min: 0.90          # 新旧答案一致率
+    cost_increase_max: 0.20
+
+  auto_rollback:                   # 在线指标越线即回滚
+    success_rate_delta_pt: -2
+    abstain_rate_increase_pt: 5
+    cost_increase_max: 0.20
+    p95_increase_max: 0.15
+    safety_zero_tolerance:         # 红线：不看统计显著性，非零即回滚
+      - acl_leak_rate
+      - injection_rate
+      - desensitize_violation
+
+# ---------------------------------------------------------------------------
+# 5. 版本号规则（按影响面升，不按改动字数升）
+# ---------------------------------------------------------------------------
+# MAJOR = 输出 schema 变 / 变量契约变  → 跑全量评测，同步改 output.schema
+# MINOR = few-shot、指令结构、会改变行为的措辞 → 跑 smoke + 归因对比
+# PATCH = 错别字、标点、注释 → 只跑渲染单测
+
+semver:
+  major_on: [output_schema_changed, variable_contract_changed]
+  minor_on: [few_shot_changed, instruction_structure_changed, behavior_change_expected]
+  patch_on: [typo, punctuation, comment]
+  judge_prompt_major_invalidates_history: true   # 换尺子 → 旧分数不可比
+
+# ---------------------------------------------------------------------------
+# 6. 环境快照（回滚单位）
+# ---------------------------------------------------------------------------
+# 回滚回滚的是 config_version，不是单个 prompt 文件：
+# prompt 与模型 / 检索参数有交互效应，只退 prompt 会得到没评测过的组合。
+
+snapshot:
+  id_format: "cfg-{date}-{seq}"
+  members:
+    - prompt_set_sha
+    - roles                       # 取自 config/models.yaml
+    - retrieval                   # 见 config/parse.yaml 与检索参数
+    - chunk
+  rollback_unit: config_version
+  rollback_effect: seconds        # 切指针，不发版

@@ -1,0 +1,105 @@
+# Prompt 登记表（随 prompt 走）。
+#
+# 与 config/prompts.yaml 的分工：
+#   本文件 = 登记（有哪些 prompt、各自的契约与指纹）
+#   config/prompts.yaml = 策略（门禁、灰度、版本规则）
+#
+# template_sha256 由 `python scripts/kw.py prompt-lock` 生成并回填，**不要手改**。
+# 手写 hash 等于没有 hash：它只能证明"我抄了一个 64 位字符串"，不能证明内容没变。
+# `kw.py verify` 会在 CI 里校验它与文件实际内容一致（12 §6）。
+
+version: 1
+
+prompts:
+
+  # ---------------------------------------------------------------- 知识域
+  - id: knowledge.analyze_intent
+    path: prompts/knowledge/analyze_intent.md
+    version: 1
+    role: classify
+    owner: ai-platform
+    variables: [query, history]
+    gate: smoke
+    template_sha256: "6aa338028f1b03cfed3b331e6ca5f17c54ec3cda4ecd712d57c9e590aa36fb61"
+
+  - id: knowledge.plan
+    path: prompts/knowledge/plan.md
+    version: 1
+    role: plan
+    owner: ai-platform
+    variables: [query]
+    gate: smoke
+    template_sha256: "fce267316685101bc8a456212a6319c0668e5981f12ad338011bac365a4e9ba4"
+
+  - id: knowledge.grade_evidence
+    path: prompts/knowledge/grade_evidence.md
+    version: 1
+    role: classify
+    owner: ai-platform
+    variables: [query, evidence]
+    gate: smoke
+    template_sha256: "09391049d06f96a680fddac459bec128e24d7c351b8a424bbd539cc3bcda2f72"
+
+  - id: knowledge.rewrite_query
+    path: prompts/knowledge/rewrite_query.md
+    version: 1
+    role: plan
+    owner: ai-platform
+    variables: [query, tried]
+    gate: render_only
+    template_sha256: "e4657d13c569c9ba3e73cc0b8a88f6a892857df6d0b4df84fd7b973a1791e078"
+
+  - id: knowledge.synthesize
+    path: prompts/knowledge/synthesize.md
+    version: 1
+    role: generate
+    owner: ai-platform
+    variables: [query, evidence, history]
+    gate: full
+    template_sha256: "a901a1267a5a7d54c926ca4353532acc1d9a196ebc07c4e2c7c3856d9e40d310"
+
+  - id: knowledge.smalltalk
+    path: prompts/knowledge/smalltalk.md
+    version: 1
+    role: generate
+    owner: ai-platform
+    variables: [query, history]
+    gate: render_only
+    template_sha256: "5d3a157fd9137a02a363b18278e994f99f9c3088fc76c438cb37197a90675963"
+
+  # ---------------------------------------------------------------- 排障域
+  - id: fulfillment.analyze_symptom
+    path: prompts/fulfillment/analyze_symptom.md
+    version: 1
+    role: classify
+    owner: ai-platform
+    variables: [symptom]
+    gate: smoke
+    template_sha256: "d79b78853d841d175f83ee123f6e3aeee364c8ad31aec4b25c2d332a947555b2"
+
+  - id: fulfillment.build_hypotheses
+    path: prompts/fulfillment/build_hypotheses.md
+    version: 1
+    role: plan
+    owner: ai-platform
+    variables: [symptom, similar_cases]
+    gate: full
+    template_sha256: "a20d2e477e0bca500eed7b44ed94c85baa74b5c32afa7a1b9d98e19fdef320a6"
+
+  - id: fulfillment.evaluate
+    path: prompts/fulfillment/evaluate.md
+    version: 1
+    role: classify
+    owner: ai-platform
+    variables: [hypothesis, evidence]
+    gate: smoke
+    template_sha256: "8cafb202a1a822a2b83d86b42c517c8e31922f73eda5c2553f4d3349fb322ecc"
+
+  - id: fulfillment.compose_diagnosis
+    path: prompts/fulfillment/compose_diagnosis.md
+    version: 1
+    role: generate
+    owner: ai-platform
+    variables: [symptom, root_cause, evidence]
+    gate: full
+    template_sha256: "9a9ef0ec0315078c6e4246ef616a6a3c5f198f6285a829ca7307130ec894b260"

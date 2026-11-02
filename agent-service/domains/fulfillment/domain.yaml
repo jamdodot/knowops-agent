@@ -1,0 +1,41 @@
+# 排障域 Domain Pack
+#
+# 与知识域共用 Runtime 与镜像，差异全部在这份声明里：工具集、停止条件、
+# 记忆用法（这里用情景记忆）、护栏（这里要动作白名单）。
+
+name: fulfillment
+version: 1
+entry: api/main_fulfillment.py
+graph: fulfillment_diagnosis
+
+tools: [lookup_order, query_metric, search_logs, check_rule, propose_action]
+
+prompts:
+  - fulfillment.analyze_symptom
+  - fulfillment.build_hypotheses
+  - fulfillment.evaluate
+  - fulfillment.compose_diagnosis
+
+# 排障域的情景记忆是"历史成功工单"，语义记忆（用户偏好）不用（docs/07 §1）
+memory: { working: true, semantic: false, episodic: true }
+
+# max_steps=12 是上限而不是目标：一次正常诊断 7 步（含审批中断点）。
+# on_budget=escalate：排障域超预算就转人工，绝不"猜一个结论"。
+stop:
+  max_steps: 12
+  budget_tokens: 20000
+  confidence_threshold: 0.8
+  max_hypotheses: 4
+  on_budget: escalate
+
+# action_whitelist 写的是**动作类型**，不是工具名。
+# 这一点必须厘清：`propose_action` 是工具（干跑校验），`retry_push_carrier` 才是动作。
+# 把工具名写进动作白名单，等于白名单永远不生效——一个静默失效的安全配置。
+guard:
+  injection_check: false          # 排障域的输入是订单号/异常码，不是自由文本知识
+  action_whitelist: [retry_push_carrier, notify_customer]
+  forbidden_actions: [refund_directly, modify_order_amount, cancel_order]
+
+output: { schema: diagnosis_report }
+
+eval: { datasets: [replay, action_safety] }
