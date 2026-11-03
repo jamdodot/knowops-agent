@@ -51,13 +51,19 @@ def route_for(fmt: str, *, text_coverage: float | None = None) -> str:
 
 
 def _pdf_text_coverage(path: Path, sample_pages: int) -> float:
-    """估算 PDF 文字覆盖率：抽样页抽出的非空字符数 / 估算容量。
+    """估算 PDF 文字层覆盖率：有文字层的抽样页占比。
 
+    判据（docs/09 §1 的"文字覆盖率"，但落到"按页判断"上）：
+    - 数字原生 PDF 的页面有文字层，get_text() 能抽出文字；
+    - 扫描件页面是图片，get_text() 抽出 ≈ 0 字符。
+    所以"有文字的页占比"就是最直接的覆盖率：≈1.0 走 L0 直取，
+    部分页无文字走管道补齐，几乎全无文字才判为扫描件。
+
+    一页抽出 ≥ 40 个非空白字符即视为"有文字层"（一行中文就有 20+ 字）。
     用抽样（config/parse.yaml §probe.sample_pages）避免长文档全量遍历。
-    返回 0~1 的覆盖率；无法打开 PDF 时返回 0（视为扫描件，交给兜底）。
     """
     try:
-        import fitz  # pymupdf
+        import fitz  # noqa: F401  (fitz 旧名，pymupdf 2.x 仍兼容)
     except ImportError:
         return 0.0
 
@@ -71,20 +77,13 @@ def _pdf_text_coverage(path: Path, sample_pages: int) -> float:
         return 0.0
 
     pages = list(range(doc.page_count))[: max(1, sample_pages)]
-    total_chars = 0.0
-    total_est = 0.0
+    textful = 0
     for pno in pages:
-        page = doc[pno]
-        text = page.get_text("text")
-        total_chars += len(text.strip())
-        # 估算容量：页面面积 × 经验字符密度（约每平方英寸 60 字符的保守估计）
-        rect = page.rect
-        area_in2 = (rect.width / 72.0) * (rect.height / 72.0)
-        total_est += area_in2 * 60.0
+        text = doc[pno].get_text("text")
+        if len(text.strip()) >= 40:  # 一行中文即 20+ 字，40 是"确有文字层"的保守下限
+            textful += 1
     doc.close()
-    if total_est <= 0:
-        return 0.0
-    return min(1.0, total_chars / total_est)
+    return textful / len(pages)
 
 
 class Router:

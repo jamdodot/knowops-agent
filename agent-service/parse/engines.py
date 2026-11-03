@@ -98,7 +98,8 @@ class PyMuPDFEngine(ParseEngine):
 
     def parse(self, path: Path, doc_id: str) -> ParsedDocument:
         try:
-            import fitz  # pymupdf
+            import pymupdf  # noqa: F401  (fitz 旧名已废弃)
+            import fitz
         except ImportError as exc:  # pragma: no cover - 依赖缺失提示
             raise EngineError(
                 "L0 直取需要 pymupdf：pip install pymupdf"
@@ -110,20 +111,36 @@ class PyMuPDFEngine(ParseEngine):
         )
         for page_no in range(doc.page_count):
             page = doc[page_no]
-            # get_text("blocks") 返回 (x0,y0,x1,y1, text, block_no, block_type)
-            blocks = page.get_text("blocks")
-            for i, (x0, y0, x1, y1, text, _bno, _btype) in enumerate(blocks):
-                text = text.strip()
+            # get_text("dict") 拿字号，用于标题启发式（正文小字号、标题大字号）
+            d = page.get_text("dict")
+            for bi, b in enumerate(d.get("blocks", [])):
+                lines = b.get("lines", [])
+                if not lines:
+                    continue
+                text_parts: list[str] = []
+                max_size = 0.0
+                for line in lines:
+                    for span in line.get("spans", []):
+                        s = span.get("text", "")
+                        if s.strip():
+                            text_parts.append(s.strip())
+                        max_size = max(max_size, float(span.get("size", 0.0)))
+                text = "".join(text_parts).strip()
                 if not text:
                     continue
+                bbox = b.get("bbox", (0, 0, 0, 0))
+                # 标题启发式：字号明显大于正文（≥ 1.2 倍正文基准 11pt）
+                btype = "heading" if max_size >= 13.0 else "paragraph"
+                level = 1 if max_size >= 15.0 else (2 if btype == "heading" else None)
                 parsed.with_block(
                     Block(
-                        id=f"{doc_id}-p{page_no + 1}-b{i}",
+                        id=f"{doc_id}-p{page_no + 1}-b{bi}",
                         doc_id=doc_id,
-                        type="paragraph",
+                        type=btype,  # type: ignore[arg-type]
                         content=text,
                         page_no=page_no + 1,
-                        bbox=(float(x0), float(y0), float(x1), float(y1)),
+                        bbox=(float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])),
+                        level=level,
                         order_index=len(parsed.blocks),
                     )
                 )
