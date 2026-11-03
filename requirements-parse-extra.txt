@@ -1,0 +1,17 @@
+# M2 才需要的解析重依赖（docs/09-文档解析设计.md §5.5 实施顺序）。
+# 不在 requirements.txt 里，避免 M1 阶段引入 3~5GB 内存峰值与 1~2GB 首次权重下载。
+#
+# 接入时机：M2「MinerU 兜底」+「质量闸门触发 rescue」时再装。
+#   pip install -r requirements-parse-extra.txt
+#
+# 三个组件：
+# - mineru：兜底专家（扫描件 / 中文复杂版面 / 质量闸门不通过）
+#   · Apache-2.0 + 商用阈值条款（在线服务需署名）
+#   · 首次运行下载约 1~2GB 权重，需预制（config/parse.yaml §rescue.weights.prebake）
+#   · 本地 CPU 2~10 秒/页，峰值内存 3~5GB，并发必须锁 1
+# - camelot-py：规则表格（读矢量线条，比模型更准）；Windows 依赖 Ghostscript
+# - pdfplumber：camelot 不可用时的退化路径（表格链第二级）
+
+mineru>=2.5
+camelot-py>=0.11
+pdfplumber>=0.11

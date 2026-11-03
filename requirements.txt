@@ -17,3 +17,15 @@ langgraph>=1.0,<2.0
 # 观测：只用标准 API + SDK，不引业务耦合
 opentelemetry-api>=1.25
 opentelemetry-sdk>=1.25
+
+# ---------------------------------------------------------------------------
+# 文档解析（M1 窄链路，docs/09-文档解析设计.md）
+# ---------------------------------------------------------------------------
+# 主力：Docling 覆盖 Office 全格式 + PDF 语义解析（MIT 许可，CPU 原生）
+# L0 直取：PyMuPDF 读有文字层的 PDF（毫秒级，比 OCR 准）
+#
+# 注意两个许可问题（docs/09 §8）：
+# - PyMuPDF 是 AGPL-3.0：作品集自用无碍；闭源商用需换 pypdfium2（Apache-2.0）或买授权
+# - MinerU 是 Apache-2.0 + 商用阈值，且只在 M2 兜底接入，故放在 requirements-parse-extra.txt
+docling>=2.0
+pymupdf>=1.24
