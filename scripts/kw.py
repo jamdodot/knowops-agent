@@ -252,6 +252,13 @@ def cmd_smoke_m0() -> None:
     subprocess.run([sys.executable, str(ROOT / "scripts" / "smoke_m0.py")], env=env, check=False)
 
 
+def cmd_demo() -> None:
+    """一键演示：解析语料→分块→灌入检索→多问题问答（含权限对比）。无 Docker/真模型也能跑。"""
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(SERVICE_DIR) + os.pathsep + env.get("PYTHONPATH", "")
+    subprocess.run([sys.executable, str(ROOT / "scripts" / "demo_knowledge.py")], env=env, check=False)
+
+
 def cmd_java_build() -> None:
     """构建 Java 业务服务（app 模块，含契约 DTO）。"""
     mvn = shutil.which("mvn")
@@ -450,6 +457,7 @@ COMMANDS = {
     "serve-fulfillment": (cmd_serve_fulfillment, "起排障域（:8002）"),
     "test": (cmd_test, "跑 pytest"),
     "smoke-m0": (cmd_smoke_m0, "双域假链路端到端验收"),
+    "demo": (cmd_demo, "一键演示知识问答（解析→分块→检索→问答，含权限对比，无 Docker 可跑）"),
     "java-build": (cmd_java_build, "构建 Java 业务服务（上传/ACL/网关）"),
     "java-test": (cmd_java_test, "跑 Java 单元测试"),
 }

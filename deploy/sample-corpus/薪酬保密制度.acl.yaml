@@ -1,0 +1,7 @@
+# 薪酬保密制度的 ACL 元文件（与同名 .md 配对）
+# v: scoped 表示受限，depts 列出可访问的部门路径
+v: scoped
+depts: ["D10.9"]
+roles: []
+groups: []
+acl_epoch: 1

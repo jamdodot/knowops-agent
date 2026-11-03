@@ -1,10 +1,12 @@
-"""知识域的工具实现（M0 用内存夹具，M1 换 PG）。
+"""知识域的工具实现。
 
-这里有一条必须讲清的替换关系：
-`_visible()` 现在是 Python 实现，**语义必须与 `docs/05` §9.1 的 SQL 完全一致**
-（祖先链展开 + 审批集合 `= ANY()` + 共享组）。M1 换成 PG 的 `permitted` CTE 时，
-用 `deploy/smoke/01_acl_smoke.sql` 的同一组用例对照——两边语义只要差一点，
-表现就是"冒烟通过但线上越权"。
+检索后端可插拔：`retrieval.build_retriever()` 按环境返回 MemoryRetriever（无 PG）
+或 PgRetriever（有 PG）。默认灌入内置种子语料 DOCS，也支持从 `KW_KNOWLEDGE_CORPUS`
+指向的目录解析真实文档灌入（见 `scripts/kw.py demo`）。
+
+权限语义有一条铁律：`_visible()` 的判定（public / 部门祖先链 / 角色 / 审批例外 /
+共享组）与 `docs/05` §2.3 的 SQL 语义**必须一致**。PG 侧是 `permitted` CTE 下推，
+内存侧是这里的 Python 实现——两边用同一组用例对照，差一点就是"冒烟过但线上越权"。
 
 为什么工具要自己取 subject 而不接受模型传参：如果 `subject` 能由模型填，
 提示注入就能改权限。所以工具从运行上下文（ContextVar）里读，模型无从干预。
@@ -13,6 +15,8 @@
 from __future__ import annotations
 
 import re
+import threading
+from pathlib import Path
 from typing import Any
 
 from runtime import current_context
@@ -109,6 +113,105 @@ def _tokens(text: str) -> set[str]:
     return set(_TOKEN.findall(text.lower()))
 
 
+# ------------------------------------------------------------------ 检索后端（惰性单例）
+_retriever: Any = None
+_retriever_lock = threading.Lock()
+
+
+def _get_retriever() -> Any:
+    """惰性初始化检索后端，并灌入种子语料。
+
+    初始化只做一次（线程安全）。种子语料 = 内置 DOCS + `KW_KNOWLEDGE_CORPUS` 目录
+    （若有）里解析+分块后的真实文档。这样无 PG 时也有可演示的真实检索。
+    """
+    global _retriever
+    if _retriever is not None:
+        return _retriever
+    with _retriever_lock:
+        if _retriever is not None:
+            return _retriever
+        from retrieval import build_retriever
+        from retrieval.memory_retriever import MemoryRetriever
+
+        r = build_retriever()
+        # 内置种子语料始终灌入（保证"开箱即能答"）
+        if isinstance(r, MemoryRetriever):
+            _seed_memory(r)
+        # 外部语料目录（可选）：解析真实文档灌入
+        corpus = Path(__import__("os").environ.get("KW_KNOWLEDGE_CORPUS", ""))
+        if corpus.is_dir() and isinstance(r, MemoryRetriever):
+            _seed_corpus(r, corpus)
+        _retriever = r
+        return r
+
+
+def _seed_memory(r: Any) -> None:
+    """把内置 DOCS 夹具灌入 MemoryRetriever，作为开箱语料。"""
+    for doc in DOCS:
+        acl = {
+            "v": "public" if doc["acl_mode"] == "public" else "scoped",
+            "depts": doc["dept_paths"],
+            "roles": doc["roles"],
+            "groups": doc["groups"],
+            "acl_epoch": doc["acl_epoch"],
+        }
+        chunks = [
+            {
+                "chunk_id": c["chunk_id"],
+                "content": c["content"],
+                "page_no": c["page_no"],
+                "section_path": c["section_path"],
+            }
+            for c in doc["chunks"]
+        ]
+        r.ingest(doc["doc_id"], doc["title"], chunks, acl)
+
+
+def _seed_corpus(r: Any, corpus: Path) -> None:
+    """解析 `KW_KNOWLEDGE_CORPUS` 目录下的文档，分块后灌入。
+
+    每份文档一个 ACL 元文件 `<doc>.acl.yaml`（可选），缺省 public。样例：
+        v: scoped
+        depts: [D10]
+        roles: []
+        groups: []
+        acl_epoch: 1
+    """
+    import yaml
+
+    from parse.pipeline import ParsePipeline
+    from parse.chunker import SemanticChunker, ChunkConfig
+
+    pipe = ParsePipeline()
+    chunker = SemanticChunker(ChunkConfig())
+    for p in sorted(corpus.iterdir()):
+        if p.suffix.lower() not in (".md", ".txt", ".pdf"):
+            continue
+        acl_path = p.with_suffix(".acl.yaml")
+        acl: dict[str, Any] = {"v": "public", "depts": [], "roles": [], "groups": [], "acl_epoch": 1}
+        if acl_path.is_file():
+            try:
+                acl = {**acl, **(yaml.safe_load(acl_path.read_text(encoding="utf-8")) or {})}
+            except Exception:
+                pass
+        try:
+            doc, _report = pipe.parse(p, doc_id=p.stem)
+            result = chunker.chunk(doc)
+        except Exception:
+            continue  # 单文档失败不阻塞整体灌入
+        chunks = [
+            {
+                "chunk_id": f"{p.stem}_{c.ord}",
+                "content": c.content,
+                "page_no": c.page_no,
+                "section_path": c.section_path,
+            }
+            for c in result.children
+        ]
+        if chunks:
+            r.ingest(p.stem, p.stem, chunks, acl)
+
+
 def register(registry: ToolRegistry) -> None:
     @registry.register(
         name="hybrid_retrieve",
@@ -122,71 +225,29 @@ def register(registry: ToolRegistry) -> None:
             "required": ["query"],
             "additionalProperties": False,
         },
-        timeout_ms=3_000,
+        timeout_ms=5_000,
         idempotent=True,
-        cost_hint="M1 起为向量 + BM25 双路 SQL",
+        cost_hint="向量 + BM25 双路（内存或 PG 下推）",
     )
     def hybrid_retrieve(query: str, top_k: int = 5) -> list[dict[str, Any]]:
         ctx = current_context()
         if ctx.subject is None:  # 防御：没有主体就没有权限，宁可不召回
             return []
-
-        q = _tokens(query)
-        scored: list[tuple[float, dict[str, Any]]] = []
-        for doc in DOCS:
-            for chunk in doc["chunks"]:
-                overlap = len(q & _tokens(chunk["content"] + doc["title"]))
-                if overlap:
-                    scored.append(
-                        (
-                            overlap,
-                            {
-                                "chunk_id": chunk["chunk_id"],
-                                "doc_id": doc["doc_id"],
-                                "title": doc["title"],
-                                "page_no": chunk["page_no"],
-                                "section_path": chunk["section_path"],
-                                "content": chunk["content"],
-                                "acl_epoch": doc["acl_epoch"],
-                                "eid": f"e_{doc['doc_id']}_{chunk['chunk_id']}",
-                                "_doc": doc,
-                            },
-                        )
-                    )
-        scored.sort(key=lambda x: x[0], reverse=True)
-
-        # 先算"候选 top-k 涉及哪些文档"，再判可见性——顺序很重要：
-        # 这样 E8（权限误过滤）才有据可查；如果先过滤再打分，就永远不知道被拦掉了什么
-        candidates = scored[: top_k * 2]
-        verdicts: dict[str, dict[str, Any]] = {}
-        for _score, row in candidates:
-            doc = row["_doc"]
-            if doc["doc_id"] in verdicts:
-                continue
-            visible, by = _visible(doc, ctx.subject)
-            verdicts[doc["doc_id"]] = {"visible": visible, "by": by}
-
+        r = _get_retriever()
         with tracing.span(
             "shared.acl.build_filter",
             {
                 "knowops.acl.dept_paths_n": len(ctx.subject.dept_paths),
                 "knowops.acl.approval_n": len(ctx.subject.approval_doc_ids or []),
                 "knowops.acl.filter_hash": ctx.acl_fingerprint,
-                "knowops.acl.verdicts": _json(verdicts),
+                "knowops.retrieval.backend": type(r).__name__,
             },
         ) as sp:
-            kept = [row for _s, row in candidates if verdicts[row["doc_id"]]["visible"]]
+            evs = r.hybrid_retrieve(query, ctx.subject, top_k=top_k)
             tracing.set_attrs(
-                sp,
-                **{"knowops.acl.rows_filtered": len(candidates) - len(kept), "knowops.retrieval.hits": len(kept)},
+                sp, **{"knowops.retrieval.hits": len(evs), "knowops.retrieval.backend": type(r).__name__}
             )
-
-        out = []
-        for row in kept[:top_k]:
-            row = dict(row)
-            row.pop("_doc", None)
-            out.append(row)
-        return out
+        return [e.to_row() for e in evs]
 
     @registry.register(
         name="doc_fetch",
@@ -202,20 +263,8 @@ def register(registry: ToolRegistry) -> None:
     )
     def doc_fetch(doc_id: str) -> dict[str, Any]:
         ctx = current_context()
-        for doc in DOCS:
-            if doc["doc_id"] != doc_id:
-                continue
-            visible, by = _visible(doc, ctx.subject)
-            if not visible:
-                # 取回也要判权限：引用是数据，一旦能按 id 取全文，就等于开了后门
-                return {"doc_id": doc_id, "error": "not_permitted", "by": by}
-            return {
-                "doc_id": doc_id,
-                "title": doc["title"],
-                "acl_epoch": doc["acl_epoch"],
-                "content": "\n".join(c["content"] for c in doc["chunks"]),
-            }
-        return {"doc_id": doc_id, "error": "not_found"}
+        r = _get_retriever()
+        return r.doc_fetch(doc_id, ctx.subject)
 
 
 def _json(value: Any) -> str:

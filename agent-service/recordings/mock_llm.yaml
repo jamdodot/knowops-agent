@@ -34,13 +34,15 @@ responses:
     default: '{"rewritten": ["资金调拨审批权限 金额档位"], "why": "换成制度用语"}'
 
   # 引用占位符是 {eid}，不是 {{eid}}——双花括号是模板变量语法，会被渲染器吃掉。
+  # mock 的 default 不硬编码任何 eid：因为检索结果随 query/身份动态变化，
+  # 硬编码 eid 会与 citation 集合脱节，触发 verify_citations 的"无票作答"拒答
+  # （这是有意的防御）。真实带引用的答案由 online 真模型生成。
+  # mock 只保证"链路通"：事件序列 meta→citation→delta/done 正确，答案文字不真实。
   knowledge.synthesize:
-    default: '跨部门资金调拨按金额分级审批：调拨金额超过 10 万元需总经理审批 {e_doc_881_c2}。单笔 5 万元以下的费用报销由部门负责人审批 {e_doc_881_c1}。'
+    default: '现有资料未覆盖该问题的直接答案，请补充说明或换个问法。'
     rules:
       - contains: "你好"
         text: "你好，我是制度问答助手，可以问报销、调拨、采购相关的规定。"
-      - contains: "付款"
-        text: "付款需在合同签订后 30 日内提交付款申请 {e_doc_902_c1}。"
 
   # ---------------------------------------------------------------- 排障域
   fulfillment.analyze_symptom:
