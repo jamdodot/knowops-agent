@@ -74,8 +74,8 @@ roles:
     provider: deepseek
     model: deepseek-v4-flash
     temperature: 0.0
-    max_tokens: 128
-    timeout_s: 10
+    max_tokens: 512              # 推理模型需预留思考空间，128 会被截断成残缺 JSON
+    timeout_s: 30
     cache: true                  # 高频且幂等，结果可缓存
 
   extract:                       # 实体关系抽取（建图）

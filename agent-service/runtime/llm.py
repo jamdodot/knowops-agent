@@ -222,7 +222,10 @@ class OpenAICompatProvider:
             raise KwError(Code.INVALID_SCHEMA, "模型请求被拒绝", internal=resp.text[:300])
 
         body = resp.json()
-        text = (body.get("choices") or [{}])[0].get("message", {}).get("content", "") or ""
+        message = (body.get("choices") or [{}])[0].get("message", {}) or {}
+        # deepseek-v4-flash 等推理模型把正文放在 reasoning_content，content 可能为空。
+        # 非流式调用里，若有 reasoning 就取 reasoning，否则取 content；两者皆空才视为空。
+        text = message.get("content") or message.get("reasoning_content") or ""
         raw_usage = body.get("usage") or {}
         input_tokens = int(raw_usage.get("prompt_tokens", 0))
         output_tokens = int(raw_usage.get("completion_tokens", 0))
