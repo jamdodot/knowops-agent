@@ -13,6 +13,17 @@ M1 落地范围（docs/09 §5.5）：
 M2 再接入 MinerU 兜底（scanned 路）；VLM 直出不排期（只写预研）。
 """
 
+from .chunker import (
+    DEFAULT_CHILD_SIZE,
+    DEFAULT_OVERLAP,
+    DEFAULT_PARENT_SIZE,
+    ChildChunk,
+    ChunkConfig,
+    ChunkResult,
+    ParentChunk,
+    SemanticChunker,
+    estimate_tokens,
+)
 from .clean import CleanReport, QualityReport, clean_document, evaluate_quality
 from .config import ParseConfig
 from .engines import (
@@ -43,6 +54,15 @@ __all__ = [
     "DoclingEngine",
     "MinerUEngine",
     "detect_format",
+    "SemanticChunker",
+    "ChunkConfig",
+    "ChildChunk",
+    "ParentChunk",
+    "ChunkResult",
+    "estimate_tokens",
+    "DEFAULT_CHILD_SIZE",
+    "DEFAULT_PARENT_SIZE",
+    "DEFAULT_OVERLAP",
     "clean_document",
     "evaluate_quality",
     "CleanReport",
