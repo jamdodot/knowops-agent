@@ -20,7 +20,17 @@
 
 CREATE EXTENSION IF NOT EXISTS vector;      -- pgvector：向量列与 HNSW
 CREATE EXTENSION IF NOT EXISTS pg_trgm;     -- 退化方案备用（10 §5：pg_search 受限时用 trgm + tsvector）
--- pg_search 由镜像的 shared_preload_libraries 提供，见 deploy/docker-compose.yml
+-- pg_search 由镜像的 shared_preload_libraries 提供（见 deploy/docker-compose.yml），
+-- 但**预加载不等于已安装**：还要 CREATE EXTENSION，否则 03 的 bm25 索引建不出来。
+-- 用 DO 兜底，非 ParadeDB 镜像（没有 pg_search）时只告警，退化到 GIN(tsv)。
+DO $$
+BEGIN
+    CREATE EXTENSION IF NOT EXISTS pg_search;
+    RAISE NOTICE 'pg_search 已安装，BM25 走主路';
+EXCEPTION WHEN OTHERS THEN
+    RAISE WARNING 'pg_search 不可用（%），BM25 退化到 GIN(tsv)', SQLERRM;
+END
+$$;
 
 CREATE SCHEMA IF NOT EXISTS knowops_write;
 CREATE SCHEMA IF NOT EXISTS knowops_read;

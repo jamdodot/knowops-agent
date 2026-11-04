@@ -31,7 +31,10 @@ from runtime.config import Settings  # noqa: E402
 CORPUS = ROOT / "deploy" / "sample-corpus"
 
 EMPLOYEE = {"user_id": "u_1001", "dept_paths": ["D10"], "roles": ["employee"]}
-PAYROLL = {"user_id": "u_9001", "dept_paths": ["D10.9"], "roles": ["payroll"]}
+# dept_paths 是**祖先链**（Java 侧 ACL 服务算好传进来），不是单个部门：
+# 薪酬专员在 D10.9，链是 D10 → D10.9。只传 ["D10.9"] 也能命中 D10.9 的授权，
+# 但会漏掉挂在 D10 上的文档，跟真实主体不一致。
+PAYROLL = {"user_id": "u_9001", "dept_paths": ["D10", "D10.9"], "roles": ["payroll"]}
 
 
 def _subject(ctx: dict) -> dict:

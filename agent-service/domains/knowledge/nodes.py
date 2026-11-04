@@ -18,7 +18,10 @@ from typing import Any
 from api.schemas import Citation
 from runtime import Runtime
 
-_EID = re.compile(r"\{([A-Za-z0-9_]+)\}")
+# eid 是 `e_{doc_id}_{chunk_id}`，而 doc_id 来自文件名，中文文档的 doc_id 就是中文。
+# 只允许 [A-Za-z0-9_] 会把中文 eid 全部漏掉，verify_citations 于是判"无票作答"，
+# 答案明明带了对的引用也被降级成 abstained（2026-11-04 真模型跑出来的）。
+_EID = re.compile(r"\{([A-Za-z0-9_\u4e00-\u9fff.\-]+)\}")
 _SENTENCE = re.compile(r"(?<=[。；！？\n])")
 
 
@@ -127,7 +130,11 @@ def rewrite_query(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
     )
     rewritten = [s for s in (_json_obj(raw).get("rewritten") or []) if isinstance(s, str) and s.strip()]
     rewritten = [s for s in rewritten if s not in tried][:2]
-    return {"sub_questions": rewritten or [state["query"] + " 制度规定"], "tried": tried + rewritten}
+    # 模型没给出可用改写就**别自己造查询**。之前这里兜底成 "原查询 + 制度规定"，
+    # 而"制度"几乎出现在每份制度文档里，等于把一堆不相干文档硬塞进第二轮证据，
+    # 最终表现为"越权查询也有召回"。宁可原样再检一轮然后拒答（有据可查的 abstain），
+    # 也不要制造看起来合理的噪声。
+    return {"sub_questions": rewritten or [state["query"]], "tried": tried + rewritten}
 
 
 def synthesize(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:

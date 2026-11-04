@@ -76,7 +76,28 @@ def require_docker() -> None:
 
 def compose(*args: str) -> None:
     require_docker()
-    run(["docker", "compose", "-f", str(COMPOSE), *args])
+    run(["docker", "compose", "-f", str(COMPOSE), *args], env=_compose_env())
+
+
+def _compose_env() -> dict[str, str]:
+    """把 config/.env 的 POSTGRES_* 映射成 compose 用的 PG_*。
+
+    为什么需要这层：config/.env 里写的是 POSTGRES_USER/PASSWORD/DB/PORT（给 psycopg
+    与运维脚本看），docker-compose.yml 里用的是 PG_USER/PASSWORD/DB/PORT（给容器看），
+    两套名字不映射就会各用各的默认值——最典型的后果是**容器密码和别人以为的密码不一致**，
+    连库时报 "password authentication failed" 却看不出原因。
+    """
+    env = dict(os.environ)
+    mapping = {
+        "PG_USER": "POSTGRES_USER",
+        "PG_PASSWORD": "POSTGRES_PASSWORD",
+        "PG_DB": "POSTGRES_DB",
+        "PG_PORT": "POSTGRES_PORT",
+    }
+    for pg_key, postgres_key in mapping.items():
+        if not env.get(pg_key) and env.get(postgres_key):
+            env[pg_key] = env[postgres_key]
+    return env
 
 
 def wait_healthy(timeout_s: int = 120) -> None:
@@ -257,6 +278,26 @@ def cmd_demo() -> None:
     env = dict(os.environ)
     env["PYTHONPATH"] = str(SERVICE_DIR) + os.pathsep + env.get("PYTHONPATH", "")
     subprocess.run([sys.executable, str(ROOT / "scripts" / "demo_knowledge.py")], env=env, check=False)
+
+
+def cmd_ingest_pg() -> None:
+    """把样例语料灌进 PG（需容器已起 + KW_PG_DSN）。"""
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(SERVICE_DIR) + os.pathsep + env.get("PYTHONPATH", "")
+    extra = sys.argv[2:]
+    subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "ingest_pg.py"), *extra], env=env, check=False
+    )
+
+
+def cmd_verify_pg() -> None:
+    """PG 真库自检：扩展/索引/数据量/检索路/鉴权对比（不调 LLM）。"""
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(SERVICE_DIR) + os.pathsep + env.get("PYTHONPATH", "")
+    extra = sys.argv[2:]
+    subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "verify_pg.py"), *extra], env=env, check=False
+    )
 
 
 def cmd_java_build() -> None:
@@ -458,12 +499,26 @@ COMMANDS = {
     "test": (cmd_test, "跑 pytest"),
     "smoke-m0": (cmd_smoke_m0, "双域假链路端到端验收"),
     "demo": (cmd_demo, "一键演示知识问答（解析→分块→检索→问答，含权限对比，无 Docker 可跑）"),
+    "ingest-pg": (cmd_ingest_pg, "把语料灌进 PG（解析→分块→写 write/read 表）"),
+    "verify-pg": (cmd_verify_pg, "PG 真库自检（扩展/索引/检索路/鉴权对比，--acl 加权限对比）"),
     "java-build": (cmd_java_build, "构建 Java 业务服务（上传/ACL/网关）"),
     "java-test": (cmd_java_test, "跑 Java 单元测试"),
 }
 
 
 def main(argv: list[str]) -> int:
+    global PG_USER, PG_DB
+    # 先读 config/.env：所有子命令（up/psql/ingest-pg/verify-pg）都依赖里面的密码与 DSN
+    sys.path.insert(0, str(SERVICE_DIR))
+    try:
+        from runtime.config import load_dotenv
+
+        load_dotenv()
+    except Exception:
+        pass  # 缺依赖时仍允许 codegen/verify 这类不碰数据库的任务
+    PG_USER = os.environ.get("PG_USER") or os.environ.get("POSTGRES_USER", "knowops")
+    PG_DB = os.environ.get("PG_DB") or os.environ.get("POSTGRES_DB", "knowops")
+
     if len(argv) < 2 or argv[1] in ("help", "-h", "--help"):
         print(__doc__)
         print("可用任务：")

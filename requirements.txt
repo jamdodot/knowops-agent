@@ -29,3 +29,9 @@ opentelemetry-sdk>=1.25
 # - MinerU 是 Apache-2.0 + 商用阈值，且只在 M2 兜底接入，故放在 requirements-parse-extra.txt
 docling>=2.0
 pymupdf>=1.24
+
+# ---------------------------------------------------------------------------
+# PG 混合检索（M1，docs/05 permitted CTE 真库落点）
+# ---------------------------------------------------------------------------
+# binary 版自带 libpq，Windows 上不需要装 PostgreSQL 客户端库
+psycopg[binary]>=3.2

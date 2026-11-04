@@ -158,6 +158,33 @@ def discover_packs(domains_root: Path | str) -> dict[str, Path]:
     }
 
 
+def load_dotenv(path: Path | None = None) -> list[str]:
+    """把 config/.env 读进 os.environ（已存在的变量不覆盖）。
+
+    为什么要有这个：文档里到处写"填 config/.env"，但代码若不自读，用户就必须
+    在每次开终端的先 `set -a; source config/.env`——这是纯粹的摩擦，且忘一次
+    就会得到"配了 key 却还在 mock"的假故障。放在这里而不是各脚本里，是因为
+    API 进程、demo、ingest 三条入口都要用。
+
+    只支持 KEY=VALUE 与 # 注释这种最朴素的语法：.env 里不该放复杂的 shell 逻辑。
+    """
+    env_path = path or (Path(__file__).resolve().parents[2] / "config" / ".env")
+    if not env_path.is_file():
+        return []
+    loaded: list[str] = []
+    for raw in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+            loaded.append(key)
+    return loaded
+
+
 @dataclass(frozen=True)
 class Settings:
     """进程级设置。全部来自环境变量，便于 compose / k8s 注入。"""
@@ -172,6 +199,7 @@ class Settings:
 
     @classmethod
     def from_env(cls) -> Settings:
+        load_dotenv()
         return cls(
             contract_version=os.environ.get("KW_CONTRACT_VERSION", "1.0.0"),
             llm_mode=os.environ.get("KW_LLM_MODE", "mock").lower(),

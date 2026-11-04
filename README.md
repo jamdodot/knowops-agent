@@ -189,45 +189,67 @@ knowops-agent/
 
 ---
 
-## 九、怎么跑起来（M0 现状）
+## 九、怎么跑起来（M0 + M1 检索现状）
 
 > M0 已完整落地：数据模型、服务间契约、运行时内核、两个最小域、双入口 `/healthz`。
-> 模型全走 mock（`MockProvider`），不需要任何 API key 或网络即可跑通两条假链路。
+> M1 已落地：文档解析（四路路由 + 质量闸门）、语义分块（small-to-big）、混合检索
+> （PG 上 pgvector dense + pg_search BM25 + RRF，鉴权下推到同一条 SQL）。
+> 没有 Docker / 没有 key 也能跑：检索自动回落内存后端，模型自动回落 mock。
 
 ```bash
 # 0) 装依赖（运行时 + 开发）
 pip install -r requirements.txt -r requirements-dev.txt
 
-# 1) 起 PG（paradedb：自带 pgvector + pg_search），首次启动自动建表 + 灌种子
+# 1) 起 PG（paradedb：自带 pgvector + pg_search），首次启动自动建表 + 建 BM25 索引 + 灌种子
 python scripts/kw.py up          # 等价 make up；不需要 docker 也能跑下面除 smoke-db 外的一切
 
 # 2) 验鉴权：public / 部门祖先链 / 审批例外 / 空数组边界，4 项断言必须全过
 python scripts/kw.py smoke-db
 
-# 3) 契约 → 双端类型（不需要数据库、不需要 docker）
+# 3) 把样例语料灌进 PG（解析 → 分块 → 写 write/read 表，含 bge-m3 向量）
+python scripts/kw.py ingest-pg
+
+# 4) PG 真库自检：扩展 / 索引 / 数据量 / 哪条检索路活着 / 两种身份的召回差异
+python scripts/kw.py verify-pg --acl
+
+# 5) 一键演示（检索层权限对比 + 端到端 SSE）；加 KW_LLM_MODE=online 用真模型作答
+python scripts/kw.py demo
+KW_LLM_MODE=online python scripts/kw.py demo
+
+# 6) 契约 → 双端类型（不需要数据库、不需要 docker）
 python scripts/kw.py codegen
 
-# 4) 自检：openapi 引用 + operationId + SQL 语法 + pydantic 的 extra="forbid" + prompt 指纹 + 抽象隔离
+# 7) 自检：openapi 引用 + operationId + SQL 语法 + pydantic 的 extra="forbid" + prompt 指纹 + 抽象隔离
 python scripts/kw.py verify
 
-# 5) 单元测试（41 条：契约 / 事件顺序 / 任务恢复 / 抽象隔离 / 预算硬停 / traceparent）
+# 8) 单元测试（91 条：契约 / 事件顺序 / 任务恢复 / 抽象隔离 / 预算硬停 / 解析 / 分块 / 检索）
 python scripts/kw.py test
 
-# 6) M0 端到端验收（双域假链路 + span 树关联，18 项断言）
+# 9) M0 端到端验收（双域假链路 + span 树关联，18 项断言）
 python scripts/kw.py smoke-m0
 
-# 7) 起服务（mock 模型，无网络）
+# 10) 起服务（mock 模型，无网络）
 python scripts/kw.py serve-knowledge      # :8001，/healthz + /v1/knowledge/answers
 python scripts/kw.py serve-fulfillment    # :8002，/healthz + /v1/fulfillment/tasks
 
-# 8) Java 业务服务（上传 / ACL 计算 / Agent 网关；需要 JDK17 + Maven）
+# 11) Java 业务服务（上传 / ACL 计算 / Agent 网关；需要 JDK17 + Maven）
 python scripts/kw.py java-build           # 构建 + 安装 contract DTO
 python scripts/kw.py java-test            # 10 条单测：主体解析 / 契约反序列化 / 上传
 ```
 
 `scripts/kw.py` 是唯一实现，`Makefile` 只是薄封装——**Windows 默认没有 make**，两套实现必然漂移。
-Windows 的三个坑已在 `deploy/docker-compose.yml` 处理（5433 端口、named volume 不挂 `/mnt/c`）；
+Windows 的坑已在 `deploy/docker-compose.yml` 处理（5433 端口避开本机 PostgreSQL、named volume 不挂 `/mnt/c`）；
 WSL2 的 `memory=10GB` 要自己在 `.wslconfig` 里设（`10` §4），这条 compose 管不了。
+
+真机部署时另外三条（都是 2026-11-04 实测踩出来的）：
+
+- **数据卷挂载点变了**：ParadeDB 的 `latest` 已经是 PG 18，数据在 `/var/lib/postgresql/<major>/`，
+  卷必须挂 `/var/lib/postgresql`。仍挂 `/var/lib/postgresql/data` 会直接启动失败。
+- **docker.io 拉不动**用镜像源：`docker pull docker.m.daocloud.io/paradedb/paradedb:latest`
+  再 `docker tag` 回 `paradedb/paradedb:latest`，或用 `PG_IMAGE=` 覆盖 compose 里的镜像名。
+- **中文 BM25 要指定分词器**：pg_search 默认分词器把整句中文当一个 token，查询永远 0 命中；
+  建索引时给 `chinese_compatible`（已在 `deploy/init/03_pg_search_index.sql` 里）。
+  另外 `CREATE EXTENSION pg_search` 必须显式执行——镜像预加载 ≠ 已安装。
 
 > 注意：M0 的 checkpoint 是 `InMemorySaver`，进程重启后 Task 状态丢失（不影响演示，
 > 因为 `input_required → resume` 的语义与 PG 版一致）。M1 换 `PostgresSaver`，表已在 `01_schema.sql` 预留。

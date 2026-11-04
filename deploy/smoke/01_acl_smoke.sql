@@ -15,12 +15,17 @@ CREATE SCHEMA IF NOT EXISTS knowops_smoke;
 
 -- 把"许可集合"写成函数，只是为了在冒烟里复用；生产代码里它就是那段 CTE，
 -- 不允许被拆成"先算清单再过滤"（那会退回 1500 万条缓存的老路，05 §2.1）。
+--
+-- 为什么要 p_doc_ids 这个作用域参数：本冒烟断言的是**ACL 语义**（哪一路命中、
+-- 空数组边界），不是"库里有几条数据"。灌了真实语料之后全库条数必然变，
+-- 写死 3 条就变成"数据一变冒烟就红"，那是把冒烟变成了数据快照。
 CREATE OR REPLACE FUNCTION knowops_smoke.visible_chunk_count(
     p_user_id       text,
     p_dept_paths    text[],
     p_roles         text[],
     p_groups        text[],
-    p_approval_docs text[]
+    p_approval_docs text[],
+    p_doc_ids       text[] DEFAULT NULL
 ) RETURNS integer
 LANGUAGE sql
 STABLE
@@ -31,6 +36,7 @@ AS $$
     WHERE d.status = 'active'
       AND d.acl_from <= now()
       AND (d.acl_to IS NULL OR d.acl_to > now())
+      AND (p_doc_ids IS NULL OR c.doc_id = ANY(p_doc_ids))
       AND (
              c.acl_jsonb->>'v' = 'public'
           OR c.acl_jsonb->'depts'  ?| p_dept_paths
@@ -44,25 +50,27 @@ $$;
 DO $$
 DECLARE
     n integer;
+    -- M0 种子文档（02_seed_m0.sql）：public / 部门 / 审批 三种授权各一份
+    seed text[] := ARRAY['doc_pub_01', 'doc_881', 'doc_902'];
 BEGIN
     -- ① 部门祖先链命中 + 审批例外 + public，三路并集
     n := knowops_smoke.visible_chunk_count(
              'u_2048', ARRAY['D10', 'D10.3'], ARRAY['employee', 'fulfillment_ops'],
-             ARRAY['sg_17'], ARRAY['doc_902']);
+             ARRAY['sg_17'], ARRAY['doc_902'], seed);
     IF n <> 3 THEN
         RAISE EXCEPTION 'ACL 冒烟失败①：u_2048 期望 3 条（public + 部门 + 审批），实际 %', n;
     END IF;
 
     -- ② 兄弟部门不在祖先链上：只见 public
     n := knowops_smoke.visible_chunk_count(
-             'u_7000', ARRAY['D20'], ARRAY['employee'], ARRAY[]::text[], ARRAY[]::text[]);
+             'u_7000', ARRAY['D20'], ARRAY['employee'], ARRAY[]::text[], ARRAY[]::text[], seed);
     IF n <> 1 THEN
         RAISE EXCEPTION 'ACL 冒烟失败②：u_7000 期望 1 条（仅 public），实际 %', n;
     END IF;
 
     -- ③ 空数组不能把条件变成"全可见"（?| 空数组必须是 false，不是 true）
     n := knowops_smoke.visible_chunk_count(
-             'u_8888', ARRAY[]::text[], ARRAY[]::text[], ARRAY[]::text[], ARRAY[]::text[]);
+             'u_8888', ARRAY[]::text[], ARRAY[]::text[], ARRAY[]::text[], ARRAY[]::text[], seed);
     IF n <> 1 THEN
         RAISE EXCEPTION 'ACL 冒烟失败③：空主体属性期望 1 条（仅 public），实际 %', n;
     END IF;

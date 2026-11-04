@@ -22,7 +22,9 @@ services:
     # 落地前先确认 tag：docker pull paradedb/paradedb:latest
     # 该镜像自带的 pg_search 社区版与企业版功能边界不同（10 §5 已提示）。
     # 若 pg_search 不可用，01_schema.sql 里的 GIN(tsv) 是退路，M0 仍可跑。
-    image: paradedb/paradedb:latest
+    # 镜像名可用 PG_IMAGE 覆盖——国内网络直连 docker.io 常常超时，
+    # 例如 PG_IMAGE=docker.m.daocloud.io/paradedb/paradedb:latest。
+    image: ${PG_IMAGE:-paradedb/paradedb:latest}
     container_name: knowops-pg
     restart: unless-stopped
 
@@ -53,7 +55,10 @@ services:
       - "${PG_PORT:-5433}:5432"
 
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # 注意：ParadeDB 从 PG 17 起（latest 现为 PG 18）改了数据目录布局——
+      # 数据存在 /var/lib/postgresql/<major>/ 下，卷必须挂在父目录。
+      # 仍挂 /var/lib/postgresql/data 会直接启动失败（镜像会报 "data in unused mount"）。
+      - pgdata:/var/lib/postgresql
       # 初始化脚本按文件名顺序执行：01 建表 → 02 种子 → 03 BM25 索引
       - ./init:/docker-entrypoint-initdb.d:ro
       # 冒烟脚本不自动执行，由 make smoke-db 显式调起

@@ -22,16 +22,22 @@ responses:
         text: '{"need_retrieval": false, "query_type": "chitchat", "reason": "致谢"}'
 
   knowledge.plan:
-    default: '{"sub_questions": ["跨部门资金调拨的审批层级"], "need_graph": false}'
+    # 空 sub_questions → nodes.plan 回落成 [原始 query]。
+    # 别在这里写死一个具体子问题：mock 会把任何用户问题都替换成那句固定话术，
+    # 于是"检索层权限对比"看起来对所有问题都召回了同一批文档（2026-11-04 踩到）。
+    default: '{"sub_questions": [], "need_graph": false}'
 
   knowledge.grade_evidence:
+    # 不要用「无关」这类词做规则：规则是拿**整条渲染后的 prompt**（含检索到的正文）
+    # 做子串匹配的，而语料里本来就有"不得向无关人员透露"——于是任何带着薪酬文档
+    # 的检索都会命中"证据与问题无关"，把 sufficiency 打成 0.1 直接拒答。
+    # 2026-11-04 踩到，mock 看起来像"权限拦截成功"，其实是规则误伤。
     default: '{"sufficiency": 0.86, "relevance": {}, "missing": ""}'
-    rules:
-      - contains: "无关"
-        text: '{"sufficiency": 0.1, "relevance": {}, "missing": "证据与问题无关"}'
 
   knowledge.rewrite_query:
-    default: '{"rewritten": ["资金调拨审批权限 金额档位"], "why": "换成制度用语"}'
+    # 同理：mock 不构造新查询，回落成 "原始 query + 制度规定"，避免演示里
+    # 答非所问却看不出来是 mock 编的
+    default: '{"rewritten": [], "why": "mock 不构造新查询"}'
 
   # 引用占位符是 {eid}，不是 {{eid}}——双花括号是模板变量语法，会被渲染器吃掉。
   # mock 的 default 不硬编码任何 eid：因为检索结果随 query/身份动态变化，
