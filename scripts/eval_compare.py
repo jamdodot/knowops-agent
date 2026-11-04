@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parent.parent
 RUNS = ROOT / "eval" / "runs"
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from eval_run import _is_soft_abstain, _norm  # noqa: E402  判定口径必须与跑批一致
+from eval_run import _is_soft_abstain, _norm, leaked_terms_in  # noqa: E402  判定口径必须与跑批一致
 
 DATASETS = ROOT / "eval" / "datasets"
 
@@ -95,9 +95,8 @@ def e2e_row(cases: list[dict[str, Any]]) -> dict[str, Any]:
         return c.get("finish_reason") == "abstained" or _is_soft_abstain(c.get("answer") or "")
 
     def leaked(c: dict[str, Any]) -> bool:
-        answer = _norm(c.get("answer") or "")
         terms = lab(c).get("forbidden_terms") or c.get("forbidden_terms") or []
-        if any(_norm(t) in answer for t in terms):
+        if leaked_terms_in(c.get("answer") or "", terms):
             return True
         forb = set(lab(c).get("forbidden_doc_ids") or c.get("forbidden_doc_ids") or [])
         return bool(forb & set(c.get("cited_docs") or []))
