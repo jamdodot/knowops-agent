@@ -80,6 +80,17 @@ def e2e_row(cases: list[dict[str, Any]]) -> dict[str, Any]:
         must = lab(c).get("must_contain") or c.get("must_contain") or []
         return any(_norm(m) in _norm(c.get("answer") or "") for m in must) if must else True
 
+    def ok_content(c: dict[str, Any]) -> bool:
+        """只看答案内容对不对，**不看 finish_reason**。
+
+        为什么要单独拆一列：agentic 在 deadline 被截断时，正文其实已经带引用发完了，
+        但 `_finish_reason` 一律落成 abstained。此时 ok_golden=False 而 ok_content=True——
+        两个数拉开的差距就是「协议层丢掉的正确答案」，不是模型答错了。
+        2026-11-04 实测 82 条里差 22 条（98.8% vs 76.8%），改任一档配置都看不出来。
+        """
+        must = lab(c).get("must_contain") or c.get("must_contain") or []
+        return any(_norm(m) in _norm(c.get("answer") or "") for m in must) if must else True
+
     def ok_noans(c: dict[str, Any]) -> bool:
         return c.get("finish_reason") == "abstained" or _is_soft_abstain(c.get("answer") or "")
 
@@ -106,6 +117,7 @@ def e2e_row(cases: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "n": len(golden),
         "golden": acc(golden, ok_golden),
+        "content": acc(golden, ok_content),
         "no_answer": acc(noans, ok_noans),
         "hard": acc(noans, lambda c: c.get("finish_reason") == "abstained"),
         "soft": acc(noans, lambda c: c.get("finish_reason") != "abstained" and _is_soft_abstain(c.get("answer") or "")),
@@ -179,14 +191,16 @@ def main() -> int:
         lines += [
             "## 端到端",
             "",
-            "| 配置 | golden n | 正确率 | 拒答准确率 | 越权泄漏 | tokens/次 | 平均步数 | p50 | p95 |",
-            "|---|---|---|---|---|---|---|---|---|",
+            "| 配置 | golden n | 正确率 | 内容命中 | 拒答准确率 | 越权泄漏 | tokens/次 | 平均步数 | p50 | p95 |",
+            "|---|---|---|---|---|---|---|---|---|---|",
         ]
         for k, r in e2e.items():
             lines.append(
-                f"| `{k}` | {r['n']} | {fmt(r['golden'], True)} | {fmt(r['no_answer'], True)} | "
+                f"| `{k}` | {r['n']} | {fmt(r['golden'], True)} | {fmt(r.get('content'), True)} | {fmt(r['no_answer'], True)} | "
                 f"{fmt(r['leak'], True)} | {fmt(r['tokens'])} | {fmt(r['steps'])} | {fmt(r['p50'])}ms | {fmt(r['p95'])}ms |"
             )
+        lines += ["", "> 正确率 = 协议 answered 且命中关键词；内容命中 = 只看答案命中关键词，不看 finish_reason。",
+                  "> 两者拉开 = 答案已经发给用户了，却被协议判成拒答。"]
         lines += ["", "### 分题型正确率（golden）", "", "| 配置 | 单跳 | 流程/数值 | 多跳 | 跨文档 |", "|---|---|---|---|---|"]
         for k, r in e2e.items():
             b = r["by_type"]
