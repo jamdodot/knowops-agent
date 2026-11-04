@@ -79,6 +79,11 @@ def _after_grade(rt: Runtime):
     def route(state: State) -> str:
         if float(state.get("sufficiency") or 0.0) >= threshold:
             return "synthesize"
+        # 判定器自己坏了（模型没按契约输出 JSON，grade_verdict 为空）时不能一律拒答：
+        # 分类器故障不该把整个域变成"答不了"。给它一次改写机会，之后带着现有证据作答，
+        # 质量交给 verify 的引用校验兜底。
+        if state.get("grade_verdict") is None and int(state.get("rounds") or 0) >= 1:
+            return "synthesize"
         if int(state.get("rounds") or 0) < max_rounds:
             return "rewrite"
         return "abstain"

@@ -1,0 +1,7 @@
+# 弹性工作与远程办公管理办法 — ACL
+# 总部各部门适用，D10 及以下属部门可见；D20（分公司/外包）不可见
+v: scoped
+depts: ["D10"]
+roles: []
+groups: []
+acl_epoch: 1

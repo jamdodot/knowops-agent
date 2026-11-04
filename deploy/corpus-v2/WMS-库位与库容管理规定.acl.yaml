@@ -1,0 +1,7 @@
+# 库位与库容管理规定 — ACL
+# 库区规划与容量指标属仓储内部口径，总部可见
+v: scoped
+depts: ["D10"]
+roles: []
+groups: []
+acl_epoch: 1

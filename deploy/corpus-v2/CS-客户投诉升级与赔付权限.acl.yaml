@@ -1,0 +1,7 @@
+# 客户投诉升级与赔付权限 — ACL
+# 含赔付授权额度，仅总部可见，避免一线越权承诺
+v: scoped
+depts: ["D10"]
+roles: []
+groups: []
+acl_epoch: 1

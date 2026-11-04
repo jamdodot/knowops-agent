@@ -1,0 +1,7 @@
+# 采购比价与招标管理规定 — ACL
+# 含评标规则与免招标口径，仅总部采购口可见
+v: scoped
+depts: ["D10"]
+roles: []
+groups: []
+acl_epoch: 1

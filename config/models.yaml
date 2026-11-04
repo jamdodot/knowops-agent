@@ -59,7 +59,9 @@ roles:
     provider: deepseek
     model: deepseek-v4-flash
     temperature: 0.2
-    max_tokens: 2048
+    max_tokens: 3072             # 2048 不够：这个模型会先思考再落答案，实测有 case 把 2047
+                                 # 个 token 全烧在思考上，答案在末尾被截断、引用标记断在半截，
+                                 # 于是被判"无票作答"转拒答（2026-11-04 v2 语料实测 19/82）。
     timeout_s: 60
 
   plan:                          # 假设生成、查询改写、检索决策
@@ -74,7 +76,9 @@ roles:
     provider: deepseek
     model: deepseek-v4-flash
     temperature: 0.0
-    max_tokens: 512              # 推理模型需预留思考空间，128 会被截断成残缺 JSON
+    max_tokens: 1024             # 推理模型会先写一段思考再落 JSON；512 会在思考中途截断，
+                                 # 表现为"JSON 解析失败 → 判成证据不足 → 整域变拒答机"。
+                                 # 2026-11-04 实测：v2 语料上 82 条里 57 条因此空答。
     timeout_s: 30
     cache: true                  # 高频且幂等，结果可缓存
 

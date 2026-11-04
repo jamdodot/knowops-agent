@@ -1,0 +1,7 @@
+# 供应商绩效评分细则 — ACL
+# 评分模型属采购内部口径，仅总部可见
+v: scoped
+depts: ["D10"]
+roles: []
+groups: []
+acl_epoch: 1

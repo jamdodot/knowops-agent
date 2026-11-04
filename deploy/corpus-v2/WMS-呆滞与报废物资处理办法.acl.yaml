@@ -1,0 +1,7 @@
+# 呆滞与报废物资处理办法 — ACL
+# 含损失认定与责任追溯，仅总部可见
+v: scoped
+depts: ["D10"]
+roles: []
+groups: []
+acl_epoch: 1

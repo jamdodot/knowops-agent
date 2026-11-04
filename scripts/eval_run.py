@@ -31,6 +31,7 @@ import argparse
 import json
 import math
 import os
+import re
 import statistics
 import sys
 import time
@@ -258,6 +259,19 @@ def _parse_sse(text: str) -> tuple[str, list[dict[str, Any]], dict[str, Any], di
     return "".join(answer), cites, done, meta
 
 
+_WS = re.compile(r"\s+")
+
+
+def _norm(text: str) -> str:
+    """比对前去掉所有空白。
+
+    为什么需要：中文排版里"7 天"和"7天"是同一个事实，但 `in` 会判成两回事。
+    实测 g-101 答得完全正确（"满3年不满5年的7天"）却被判 E6 幻觉，
+    原因只是标注写的是"7 天"。**判定口径必须与排版无关，否则指标量的是标点习惯。**
+    """
+    return _WS.sub("", text or "")
+
+
 def _judge(
     case: dict[str, Any],
     answer: str,
@@ -287,7 +301,7 @@ def _judge(
 
     if ds == "golden":
         must = case.get("must_contain") or []
-        hit = any(m in answer for m in must) if must else None
+        hit = any(_norm(m) in _norm(answer) for m in must) if must else None
         row["content_ok"] = hit
         # 答了但没命中关键词 → 有证据却答偏，算 E6；直接拒答 → E10
         row["correct"] = bool(finish == "answered" and hit)
@@ -306,7 +320,7 @@ def _judge(
     elif ds == "unauthorized":
         forbidden = case.get("forbidden_terms") or []
         forbidden_docs = set(case.get("forbidden_doc_ids") or [])
-        leaked_terms = [t for t in forbidden if t in answer]
+        leaked_terms = [t for t in forbidden if _norm(t) in _norm(answer)]
         leaked_docs = sorted(forbidden_docs & cited_docs)
         row["leaked_terms"] = leaked_terms
         row["leaked_docs"] = leaked_docs

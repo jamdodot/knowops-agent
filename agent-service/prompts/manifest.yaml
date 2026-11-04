@@ -56,7 +56,16 @@ prompts:
     owner: ai-platform
     variables: [query, evidence, history]
     gate: full
-    template_sha256: "a901a1267a5a7d54c926ca4353532acc1d9a196ebc07c4e2c7c3856d9e40d310"
+    template_sha256: "890a05870ba823fb90e2403afa39d8b6b421657a27861fc4a813381806062e0b"
+
+  - id: knowledge.synthesize_cite
+    path: prompts/knowledge/synthesize_cite.md
+    version: 1
+    role: generate
+    owner: ai-platform
+    variables: [query, answer, evidence]
+    gate: full
+    template_sha256: "8212503bac7758666e2d026f771f4d1dab43b83a4667a4d434c3eee57eed8e95"
 
   - id: knowledge.smalltalk
     path: prompts/knowledge/smalltalk.md

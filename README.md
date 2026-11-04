@@ -196,6 +196,20 @@ knowops-agent/
 > （PG 上 pgvector dense + pg_search BM25 + RRF，鉴权下推到同一条 SQL）。
 > 没有 Docker / 没有 key 也能跑：检索自动回落内存后端，模型自动回落 mock。
 
+**当前语料与评测规模**（2026-11-04，语料 v2）：
+
+| 项 | 数量 | 说明 |
+|---|---|---|
+| 文档 | 48 份 / 293 chunk | `deploy/corpus-v2/` 41 份 + `deploy/sample-corpus/` 4 份 + `02_seed_m0.sql` 3 份 |
+| 业务域 | 7 个 | 人事 / 财务 / 采购 / 仓储 / 订单履约 / IT / 客服 |
+| 受限文档 | 18 份 | D10 总部 / D10.9 薪酬 / payroll 角色 / D20 反向隔离 |
+| 黄金集 | 198 条 | 单跳 147 / 流程 22 / 多跳 18 / 跨文档 11 |
+| 越权集 | 82 条 | 每条都带 `control`（同题换有权主体），否则「泄漏率 0」可能只是检索坏了 |
+| 拒答集 | 8 条 | 含 2 条边界题：有相邻条款但没有直接依据 |
+
+设计说明见 `docs/15-后续路线.md`：语料是**刻意**造成「有跨文档题、有同义不同词、有反向隔离」的，
+否则 Agentic 的 rewrite 永远没有触发理由，两类图的对比就变成自证。
+
 ```bash
 # 0) 装依赖（运行时 + 开发）
 pip install -r requirements.txt -r requirements-dev.txt
@@ -246,6 +260,14 @@ python scripts/kw.py serve-fulfillment    # :8002，/healthz + /v1/fulfillment/t
 #     · 评测看板   —— 读 eval/runs 的跑批产物，三档对比 + 检索层 rerank 开关对比
 #   和后端同源（FastAPI 挂 StaticFiles），没有构建链，改 web/ 下的文件刷新即可
 KW_LLM_MODE=online python scripts/kw.py serve-knowledge   # 想要真实作答就用 online
+
+# 10.2) 在 PyCharm 里跑（等价于第 10 步，仓库已带好 Run Configuration）
+#   ① Interpreter 选项目根的 .venv（已是 venv + --system-site-packages，免重装 docling）
+#   ② 右上角选 "knowledge :8001"，点运行；浏览器开 http://localhost:8001/
+#   配置写在 .idea/runConfigurations/ 下，脚本用的是 **Module name** 而不是 Script path。
+#   这一点不是风格问题：Script path 会把 agent-service/api 塞进 sys.path[0]，
+#   `import http` 就会命中 api/http.py，直接 ModuleNotFoundError: No module named 'http.client'。
+#   要用命令行等价：cd agent-service && python -m api.main_knowledge
 
 # 11) Java 业务服务（上传 / ACL 计算 / Agent 网关；需要 JDK17 + Maven）
 python scripts/kw.py java-build           # 构建 + 安装 contract DTO

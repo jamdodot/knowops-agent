@@ -1,0 +1,7 @@
+# 工资核算与发放操作规程 — ACL
+# 仅薪酬岗角色可见（比 D10.9 更窄：同部门非薪酬岗也不可见）
+v: scoped
+depts: []
+roles: ["payroll"]
+groups: []
+acl_epoch: 1

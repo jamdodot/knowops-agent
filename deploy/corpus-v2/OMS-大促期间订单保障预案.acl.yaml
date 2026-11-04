@@ -1,0 +1,7 @@
+# 大促期间订单保障预案 — ACL
+# 含容量红线与熔断阈值，仅总部可见
+v: scoped
+depts: ["D10"]
+roles: []
+groups: []
+acl_epoch: 1

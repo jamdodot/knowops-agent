@@ -1,0 +1,7 @@
+# 数据分级与访问控制规范 — ACL
+# 数据分级口径与加密要求属内部管控细节，总部可见
+v: scoped
+depts: ["D10"]
+roles: []
+groups: []
+acl_epoch: 1

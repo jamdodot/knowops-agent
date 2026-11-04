@@ -1,0 +1,7 @@
+# 采购付款审批权限矩阵 — ACL
+# 含付款金额分档与资金调度信息，仅总部财务与采购口可见
+v: scoped
+depts: ["D10"]
+roles: []
+groups: []
+acl_epoch: 1

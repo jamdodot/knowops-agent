@@ -16,7 +16,7 @@ import pytest
 SCRIPTS = Path(__file__).resolve().parents[2] / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
-from eval_run import _is_soft_abstain, mrr_at, ndcg_at, recall_at  # noqa: E402
+from eval_run import _is_soft_abstain, _norm, mrr_at, ndcg_at, recall_at  # noqa: E402
 
 
 # ------------------------------------------------------------------ 软拒答
@@ -46,6 +46,20 @@ def test_soft_abstain_recognized(answer: str) -> None:
 )
 def test_soft_abstain_rejected(answer: str) -> None:
     assert _is_soft_abstain(answer) is False
+
+
+# ------------------------------------------------------------------ 判定口径
+def test_norm_ignores_spacing():
+    """判定必须与排版无关：中文里"7 天"和"7天"是同一个事实。
+
+    实测 g-101 答得完全正确（"满3年不满5年的7天"）却因标注写成"7 天"被判 E6 幻觉。
+    """
+    assert "7 天" not in "满3年不满5年的7天"  # 朴素比对会漏
+    assert _norm("7 天") in _norm("满3年不满5年的7天")
+
+
+def test_norm_keeps_content():
+    assert _norm("E-4001 超时未发货") == "E-4001超时未发货"
 
 
 # ------------------------------------------------------------------ 检索指标

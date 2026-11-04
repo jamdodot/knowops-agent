@@ -21,11 +21,14 @@ prompts:
 # 知识域的长期记忆是"用户偏好"，不是历史案例（docs/07 §1）
 memory: { working: true, semantic: true, episodic: false }
 
-# max_steps=8：analyze→plan→retrieve→grade→synthesize→verify 是 6 步，
-# 留出 2 步给一次 query 改写回环。卡到 6 会让"改写一次"直接撞预算，
-# 于是改写路径永远跑不到——这种"看起来配置了、实际不可达"的阈值最难查。
+# max_steps=10：
+# 基础路径 analyze→plan→retrieve→grade→synthesize→verify 是 6 步；
+# 一次改写回环实际是 rewrite→retrieve→grade **3 步**（不是 2 步），共 9 步。
+# 卡到 8 会让改写路径的最后一步 verify 直接撞预算，表现为"答案已经生成、
+# 引用也对，却被标成 abstained"——正文有内容、状态却是拒答。
+# 留 1 步余量取 10；主约束交给 budget_tokens。
 stop:
-  max_steps: 8
+  max_steps: 10
   budget_tokens: 12000
   evidence_threshold: 0.75
   on_budget: abstain

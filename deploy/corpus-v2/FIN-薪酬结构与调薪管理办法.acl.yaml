@@ -1,0 +1,7 @@
+# 薪酬结构与调薪管理办法 — ACL
+# 机密级：仅薪酬部门（D10.9）可见，禁止向其他部门扩散
+v: scoped
+depts: ["D10.9"]
+roles: []
+groups: []
+acl_epoch: 1

@@ -25,7 +25,27 @@ ROOT = Path(__file__).resolve().parent.parent
 RUNS = ROOT / "eval" / "runs"
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from eval_run import _is_soft_abstain  # noqa: E402  判定口径必须与跑批一致
+from eval_run import _is_soft_abstain, _norm  # noqa: E402  判定口径必须与跑批一致
+
+DATASETS = ROOT / "eval" / "datasets"
+
+
+def load_labels() -> dict[str, dict[str, Any]]:
+    """按 case id 读**当前**数据集标注。
+
+    为什么不能直接用跑批 JSON 里存的 must_contain / forbidden_terms：
+    那是跑批当时的快照。标注改过之后（扩语料会让"解除劳动合同"这种词失去区分度），
+    快照重算出来的分数是旧的——这正是 `eval_compare` 说"能重算历史结果"却做不到的原因。
+    以数据集为准，跑批结果只当 answer/finish_reason/retrieved 的原始记录。
+    """
+    labels: dict[str, dict[str, Any]] = {}
+    for f in sorted(DATASETS.glob("*.jsonl")):
+        for line in f.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line:
+                c = json.loads(line)
+                labels[c["id"]] = c
+    return labels
 
 
 def load_runs() -> dict[str, list[dict[str, Any]]]:
@@ -44,6 +64,11 @@ def kind(cases: list[dict[str, Any]]) -> str:
 
 
 def e2e_row(cases: list[dict[str, Any]]) -> dict[str, Any]:
+    labels = load_labels()
+
+    def lab(c: dict[str, Any]) -> dict[str, Any]:
+        return labels.get(c.get("id") or "", {})
+
     def ds(name: str) -> list[dict[str, Any]]:
         return [c for c in cases if c.get("dataset") == name]
 
@@ -52,14 +77,19 @@ def e2e_row(cases: list[dict[str, Any]]) -> dict[str, Any]:
     def ok_golden(c: dict[str, Any]) -> bool:
         if c.get("finish_reason") != "answered":
             return False
-        must = c.get("must_contain") or []
-        return any(m in (c.get("answer") or "") for m in must) if must else True
+        must = lab(c).get("must_contain") or c.get("must_contain") or []
+        return any(_norm(m) in _norm(c.get("answer") or "") for m in must) if must else True
 
     def ok_noans(c: dict[str, Any]) -> bool:
         return c.get("finish_reason") == "abstained" or _is_soft_abstain(c.get("answer") or "")
 
     def leaked(c: dict[str, Any]) -> bool:
-        return bool(c.get("leaked_terms") or c.get("leaked_docs"))
+        answer = _norm(c.get("answer") or "")
+        terms = lab(c).get("forbidden_terms") or c.get("forbidden_terms") or []
+        if any(_norm(t) in answer for t in terms):
+            return True
+        forb = set(lab(c).get("forbidden_doc_ids") or c.get("forbidden_doc_ids") or [])
+        return bool(forb & set(c.get("cited_docs") or []))
 
     def acc(rs: list[dict[str, Any]], fn: Any) -> float | None:
         return round(sum(1 for r in rs if fn(r)) / len(rs), 3) if rs else None
@@ -86,7 +116,7 @@ def e2e_row(cases: list[dict[str, Any]]) -> dict[str, Any]:
         "p95": round(p95, 0),
         "by_type": {
             t: acc([c for c in golden if c.get("query_type") == t], ok_golden)
-            for t in ("single_hop", "process", "multi_hop")
+            for t in ("single_hop", "process", "multi_hop", "cross_doc")
         },
     }
 
@@ -157,11 +187,12 @@ def main() -> int:
                 f"| `{k}` | {r['n']} | {fmt(r['golden'], True)} | {fmt(r['no_answer'], True)} | "
                 f"{fmt(r['leak'], True)} | {fmt(r['tokens'])} | {fmt(r['steps'])} | {fmt(r['p50'])}ms | {fmt(r['p95'])}ms |"
             )
-        lines += ["", "### 分题型正确率（golden）", "", "| 配置 | 单跳 | 流程/数值 | 多跳 |", "|---|---|---|---|"]
+        lines += ["", "### 分题型正确率（golden）", "", "| 配置 | 单跳 | 流程/数值 | 多跳 | 跨文档 |", "|---|---|---|---|---|"]
         for k, r in e2e.items():
             b = r["by_type"]
             lines.append(
-                f"| `{k}` | {fmt(b['single_hop'], True)} | {fmt(b['process'], True)} | {fmt(b['multi_hop'], True)} |"
+                f"| `{k}` | {fmt(b['single_hop'], True)} | {fmt(b['process'], True)} "
+                f"| {fmt(b['multi_hop'], True)} | {fmt(b.get('cross_doc'), True)} |"
             )
         lines += ["", "### 拒答形态拆分（no_answer）", "", "| 配置 | 硬拒答 | 软拒答 | 合计 |", "|---|---|---|---|"]
         for k, r in e2e.items():

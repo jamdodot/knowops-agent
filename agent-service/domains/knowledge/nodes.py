@@ -59,10 +59,32 @@ def _fmt_evidence(rows: list[dict[str, Any]]) -> str:
         return "（无）"
     lines = []
     for r in rows:
+        # 用 {} 包 eid，和答案要求的引用格式保持一致。
+        # 曾用 [eid]，结果模型在正文里抄 `[e_xxx]`、在需要 `{e_xxx}` 时又抄模板占位符，
+        # 两种括号并存只会让模型选错一种。
         lines.append(
-            f"[{r['eid']}] 《{r['title']}》{r.get('section_path') or ''} 第{r.get('page_no', '?')}页\n{r['content']}"
+            f"{{{r['eid']}}} 《{r['title']}》{r.get('section_path') or ''} 第{r.get('page_no', '?')}页\n{r['content']}"
         )
     return "\n\n".join(lines)
+
+
+def _strip_unknown_eids(text: str, known: set[str]) -> str:
+    """把模型自造的引用标记从正文里抹掉。
+
+    最典型的来源是模型把 prompt 里的模板占位符原样抄回来（正文出现 `{eid}` 三个字母）。
+    这里**不抛异常**：引用是否成立由 verify 判定——一个有效引用都没有就该拒答，
+    而不是让整条链路 INTERNAL（2026-11-04 跑 82 条 e2e 时被这条打挂过）。
+    """
+    return _EID.sub(lambda m: m.group(0) if m.group(1) in known else "", text)
+
+
+#: 全角字符归一。模型偶尔会把 `{ｅ_xxx}` 打成全角（尤其句末混排时），
+#: 正则匹配不到就等于"没引用"，整题被误判拒答（实测 g-115 即此情况）。
+_FW_CITE = str.maketrans({"ｅ": "e", "Ｅ": "E", "｛": "{", "｝": "}", "＿": "_", "－": "-"})
+
+
+def _normalize_cite_chars(text: str) -> str:
+    return text.translate(_FW_CITE)
 
 
 def _emit_text(rt: Runtime, text: str) -> None:
@@ -181,6 +203,21 @@ def synthesize(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
         history=_history(rt),
     )
     text = rt.guard.desensitize(text)
+    known = {c.eid for c in citations}
+    text = _strip_unknown_eids(_normalize_cite_chars(text), known)
+    if known and not _EID.findall(text):
+        # 模型整段不给引用标记是真实高频失败（82 条里 5 条）：有证据、答案也对，
+        # 却因为"无票作答"被 verify 判拒答。补一次引用比直接拒答划算得多——
+        # 成本只有一次短补全，收益是把"知识错误"和"格式错误"分开。
+        repaired = rt.llm_call(
+            "knowledge.synthesize_cite",
+            query=state["query"],
+            answer=text,
+            evidence=_fmt_evidence(rows),
+        )
+        repaired = _strip_unknown_eids(_normalize_cite_chars(rt.guard.desensitize(repaired)), known)
+        if _EID.findall(repaired):
+            text = repaired
     _emit_text(rt, text)
     return {"answer": text, "citations": [c.model_dump(mode="json") for c in citations]}
 
@@ -211,6 +248,19 @@ def smalltalk(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
     return {"answer": text, "finish_reason": "answered", "stop_reason": "direct"}
 
 
+#: 拒答话术。要按 reason 分开：用户看到的不是"系统错误"，而是"这条为什么没答"。
+_ABSTAIN_TEXT = {
+    "insufficient_evidence": "现有资料未覆盖这个问题，无法给出有依据的答案。",
+    "no_citation": "现有资料不足以给出可引用的答案。",
+    "citation_failed": "现有资料不足以给出可引用的答案。",
+    "empty_answer": "现有资料不足以给出可引用的答案。",
+}
+
+
 def abstain(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
     reason = state.get("stop_reason") or "insufficient_evidence"
+    # 已经吐过正文就不再补话术：synthesize→verify 降级到这里的路径，
+    # 用户已经看到答案了，再追加一句"未覆盖"只会自相矛盾。
+    if not (state.get("answer") or "").strip():
+        rt.delta(_ABSTAIN_TEXT.get(reason, _ABSTAIN_TEXT["insufficient_evidence"]))
     return {"finish_reason": "abstained", "stop_reason": reason}

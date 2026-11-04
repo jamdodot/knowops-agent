@@ -1,0 +1,7 @@
+# 紧急采购与例外审批规定 — ACL
+# 例外通道的认定口径仅总部可见，避免被刻意利用
+v: scoped
+depts: ["D10"]
+roles: []
+groups: []
+acl_epoch: 1

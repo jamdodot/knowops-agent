@@ -71,8 +71,13 @@ JOIN knowops_read.kb_doc_mirror d ON d.doc_id = c.doc_id
 LEFT JOIN knowops_write.kb_document doc ON doc.id = c.doc_id
 """
 
+# 用 `|||`（析取）而不是 `@@@`（合取）：`@@@` 要求查询里**每个** token 都出现，
+# 短关键词（"背景调查"）能命中，但一句完整的自然语言问句几乎必然 0 命中
+# ——"哪些岗位在发录用通知前要做背景调查" 在 48 份语料上是 0 条，
+# 改成 `|||` 后 246 条候选，且正确块以 32.4 分排在第二位 15.6 分之前。
+# 代价是候选变宽，但这正是我们要的：BM25 只负责"别漏"，排序交给 RRF + rerank。
 _BM25_SQL = _PERMITTED_SQL + _SELECT_COLS % "paradedb.score(c.id)" + """
-WHERE c.content @@@ %(query)s
+WHERE c.content ||| %(query)s
 ORDER BY score DESC
 LIMIT %(limit)s;
 """

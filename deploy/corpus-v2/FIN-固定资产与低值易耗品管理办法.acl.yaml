@@ -1,0 +1,7 @@
+# 固定资产与低值易耗品管理办法 — ACL
+# 含资产台账与处置审批权限，总部可见
+v: scoped
+depts: ["D10"]
+roles: []
+groups: []
+acl_epoch: 1
