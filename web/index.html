@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KnowOps · Agentic RAG 演示</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230F6E56'/%3E%3Ctext x='16' y='23' font-family='system-ui,sans-serif' font-size='18' font-weight='500' fill='%23ffffff' text-anchor='middle'%3EK%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="app">
+
+  <aside class="rail">
+    <div class="brand">
+      <div class="mark">K</div>
+      <div>
+        <div class="brand-name">KnowOps</div>
+        <div class="brand-sub">权限感知 RAG</div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item is-active" data-view="chat">知识问答</button>
+      <button class="nav-item" data-view="compare">权限对比</button>
+      <button class="nav-item" data-view="eval">评测看板</button>
+    </nav>
+
+    <div class="rail-foot">
+      <div class="svc-state" id="svc-state">
+        <span class="dot"></span>
+        <span class="svc-text" id="svc-text">检查服务</span>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <!-- ============================================ 问答 -->
+    <section class="view" id="view-chat">
+      <header class="view-head">
+        <h1>知识问答</h1>
+        <p class="view-desc">SSE 流式作答 · 引用可溯源到片段 · 权限在检索阶段就下沉到 SQL</p>
+      </header>
+
+      <form class="ask" id="ask-form">
+        <div class="ask-row">
+          <select id="identity" aria-label="以谁的身份提问">
+            <option value="employee">普通员工 · D10</option>
+            <option value="payroll">薪酬专员 · D10.9</option>
+            <option value="finance">财务 · D10.3</option>
+          </select>
+          <input type="text" id="question" placeholder="问点什么，比如：单笔 6 万元报销要谁审批？" autocomplete="off">
+          <button type="submit" class="btn" id="ask-btn">发送</button>
+        </div>
+        <div class="hints" id="hints"></div>
+      </form>
+
+      <div class="answer-grid">
+        <article class="panel answer-panel">
+          <div class="panel-head">
+            <span>回答</span>
+            <span class="badge" id="finish-badge" hidden></span>
+          </div>
+          <div class="answer-body" id="answer-body">
+            <div class="empty">输入问题后，答案会逐字出现。</div>
+          </div>
+          <footer class="metrics" id="metrics"></footer>
+          <div class="notice" id="chat-notice" hidden></div>
+        </article>
+
+        <aside class="panel cite-panel">
+          <div class="panel-head">
+            <span>引用</span>
+            <span class="count" id="cite-count">0</span>
+          </div>
+          <div class="cite-list" id="cite-list">
+            <div class="empty" style="padding:10px">本次作答引用的证据会列在这里。</div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ============================================ 权限对比 -->
+    <section class="view" id="view-compare" hidden>
+      <header class="view-head">
+        <h1>权限对比</h1>
+        <p class="view-desc">同一个问题、两个身份、并发检索 —— 拦截发生在 SQL 的 WHERE 里，不是回答之后打码</p>
+      </header>
+
+      <form class="cmp-form" id="cmp-form">
+        <input type="text" id="cmp-question" value="薪酬数据谁能查看？" autocomplete="off">
+        <button type="submit" class="btn" id="cmp-btn">并发对比</button>
+      </form>
+      <div class="hints" style="margin:-8px 0 16px">
+        <button type="button" class="chip" data-cmp="薪酬数据谁能查看？">薪酬数据谁能查看？</button>
+        <button type="button" class="chip" data-cmp="什么情况下可以调阅他人的薪酬数据？">什么情况下可调阅他人薪酬？</button>
+        <button type="button" class="chip" data-cmp="单笔 6 万元的费用报销要谁审批？">单笔 6 万报销谁审批？</button>
+      </div>
+
+      <div class="cmp-grid" id="cmp-grid"></div>
+    </section>
+
+    <!-- ============================================ 评测看板 -->
+    <section class="view" id="view-eval" hidden>
+      <header class="view-head">
+        <h1>评测看板</h1>
+        <p class="view-desc">三档配置对比 · 数字直接读 eval/runs 的跑批产物，不在页面里重算判定</p>
+      </header>
+
+      <div class="eval-toolbar">
+        <select id="run-select" aria-label="选择跑批结果"></select>
+        <button class="btn btn-ghost" id="run-reload">刷新</button>
+        <div class="spacer"></div>
+        <span class="eval-hint" id="run-meta"></span>
+      </div>
+
+      <div id="eval-content">
+        <div class="empty muted">加载中……</div>
+      </div>
+    </section>
+
+  </main>
+</div>
+<script src="app.js" type="module"></script>
+</body>
+</html>

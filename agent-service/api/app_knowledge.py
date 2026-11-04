@@ -9,12 +9,15 @@
 
 from __future__ import annotations
 
+import json
+import re
 import sys
 import traceback
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 
 SERVICE_ROOT = Path(__file__).resolve().parent.parent
 if str(SERVICE_ROOT) not in sys.path:
@@ -30,6 +33,14 @@ from runtime.errors import ContractViolation, KwError  # noqa: E402
 from runtime.events import EventSink  # noqa: E402
 
 DOMAINS_ROOT = SERVICE_ROOT / "domains"
+#: 演示页在项目根 web/，不在 agent-service 下——它同时展示知识域问答和评测结果，
+#: 归给任何一个域都不合适。
+WEB_ROOT = SERVICE_ROOT.parent / "web"
+EVAL_RUNS = SERVICE_ROOT.parent / "eval" / "runs"
+
+#: run 文件名白名单。(?!.*\.\.) 是必须的：只写 [..._-] 的话 ".." 本身能通过，
+#: 再拼上 .json 虽然越不出目录，但没必要留这种余地。
+_TAG_RE = re.compile(r"(?!.*\.\.)[A-Za-z0-9_.\-]{1,64}")
 
 
 def create_app(settings: Settings | None = None, *, domain_dir: Path | None = None) -> FastAPI:
@@ -187,7 +198,79 @@ def create_app(settings: Settings | None = None, *, domain_dir: Path | None = No
             """
             return {"trace_id": trace_id, "spans": tracing.span_tree(trace_id)}
 
+    # ------------------------------------------------------------------ 评测结果
+    if settings.debug_endpoints:
+
+        @app.get("/v1/eval/runs")
+        def eval_run_list() -> dict[str, object]:
+            """列出可展示的跑批结果（只读）。
+
+            列表不带 cases：一份 run 约 30KB，页面先看列表再点进去。
+            读不到的跳过——评测产物是本地文件，缺了不该让整个服务起不来。
+            """
+            runs = [{k: v for k, v in r.items() if k != "cases"} for r in _scan_runs()]
+            return {"root": str(EVAL_RUNS), "runs": runs}
+
+        @app.get("/v1/eval/runs/{key}")
+        def eval_run_detail(key: str) -> JSONResponse:
+            # key 来自 URL：挡住 ../ 这类穿越。eval 产物在项目目录里，不该被路径绕过读别的文件。
+            if not _TAG_RE.fullmatch(key):
+                return JSONResponse(status_code=400, content={"error": "bad key"})
+            for run in _scan_runs():
+                if run["key"] == key:
+                    return JSONResponse(content=run)
+            return JSONResponse(status_code=404, content={"error": "run not found", "key": key})
+
+    # ------------------------------------------------------------------ 演示页
+    # 挂最后：Starlette 按注册顺序匹配，前面定义的路由优先，这里只兜底静态资源。
+    if WEB_ROOT.is_dir():
+        app.mount("/", StaticFiles(directory=str(WEB_ROOT), html=True), name="web")
+
     return app
+
+
+def _scan_runs() -> list[dict[str, object]]:
+    """扫 eval/runs，把每个"含 cases 的顶层子键"当成一个可展示的 run。
+
+    不能假设文件名 == tag == 子键：检索层一次跑批产出两个子键
+    （`ret-baseline__rerank0` / `__rerank1`），而顶层 `tag` 是字符串 `ret-baseline`。
+    按文件名取 `doc[tag]` 会拿到字符串而不是 payload。
+
+    每次调用都重新读盘、不做缓存：跑完评测刷新页面必须立刻看到新结果，
+    而 4 个文件 × 30KB 的读取成本远低于"看到过期数字"的代价。
+    """
+    runs: list[dict[str, object]] = []
+    if not EVAL_RUNS.is_dir():
+        return runs
+
+    paths = sorted(EVAL_RUNS.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for path in paths:
+        try:
+            doc = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(doc, dict):
+            continue
+        for key, payload in doc.items():
+            if not (isinstance(payload, dict) and isinstance(payload.get("cases"), list)):
+                continue
+            cases = payload["cases"]
+            # 判定口径与 scripts/eval_compare.py 的 kind() 一致：检索层 case 带 retrieved
+            kind = "retrieval" if cases and "retrieved" in cases[0] else "e2e"
+            runs.append(
+                {
+                    "key": key,
+                    "tag": doc.get("tag") or path.stem,
+                    "kind": kind,
+                    "created_at": doc.get("created_at"),
+                    "git_sha": doc.get("git_sha"),
+                    "config": doc.get("config") or {},
+                    "summary": payload.get("summary") or {},
+                    "n_cases": len(cases),
+                    "cases": cases,
+                }
+            )
+    return runs
 
 
 def _finish_reason(result, on_budget: str) -> str:

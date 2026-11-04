@@ -34,3 +34,6 @@ recordings/*.jsonl
 *.iml
 .DS_Store
 Thumbs.db
+
+# 本地临时产物（截图、调试输出）
+.tmp/
