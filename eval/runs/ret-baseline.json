@@ -1,0 +1,2041 @@
+{
+  "tag": "ret-baseline",
+  "created_at": "2026-11-04T19:34:00+08:00",
+  "git_sha": "e920415",
+  "config": {
+    "datasets": [
+      "golden",
+      "no_answer",
+      "unauthorized"
+    ],
+    "n_cases": 36,
+    "graph": null,
+    "llm_mode": "mock",
+    "rerank_model": "BAAI/bge-reranker-v2-m3",
+    "dense_min_sim": "0.55",
+    "recall_n": "50"
+  },
+  "ret-baseline__rerank0": {
+    "cases": [
+      {
+        "id": "g-001",
+        "query": "事假需要提前多久申请？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "gold": [
+          "员工考勤管理制度-c3"
+        ],
+        "retrieved": [
+          "员工考勤管理制度-c3",
+          "员工考勤管理制度-c4",
+          "费用报销管理办法-c4",
+          "员工考勤管理制度-c2"
+        ],
+        "n_retrieved": 4,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 532.1,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 4
+        }
+      },
+      {
+        "id": "g-002",
+        "query": "请病假需要提供什么材料？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "gold": [
+          "员工考勤管理制度-c3"
+        ],
+        "retrieved": [
+          "员工考勤管理制度-c3",
+          "员工考勤管理制度-c1"
+        ],
+        "n_retrieved": 2,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 337.3,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 2
+        }
+      },
+      {
+        "id": "g-003",
+        "query": "司龄满 5 年的员工有几天年假？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "gold": [
+          "员工考勤管理制度-c3"
+        ],
+        "retrieved": [
+          "员工考勤管理制度-c3",
+          "费用报销管理办法-c3",
+          "费用报销管理办法-c4",
+          "员工考勤管理制度-c4"
+        ],
+        "n_retrieved": 4,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 352.7,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 4
+        }
+      },
+      {
+        "id": "g-004",
+        "query": "一线城市差旅住宿的标准是多少？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "gold": [
+          "费用报销管理办法-c2"
+        ],
+        "retrieved": [
+          "费用报销管理办法-c2"
+        ],
+        "n_retrieved": 1,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 298.4,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 1
+        }
+      },
+      {
+        "id": "g-005",
+        "query": "报销款项审批通过后多久发放？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "gold": [
+          "费用报销管理办法-c4"
+        ],
+        "retrieved": [
+          "费用报销管理办法-c4",
+          "费用报销管理办法-c0",
+          "费用报销管理办法-c3",
+          "采购付款管理规定-c2",
+          "采购付款管理规定-c3",
+          "费用报销管理办法-c1",
+          "采购付款管理规定-c0",
+          "员工考勤管理制度-c3",
+          "员工考勤管理制度-c4",
+          "费用报销管理办法-c2"
+        ],
+        "n_retrieved": 10,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 343.6,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 10
+        }
+      },
+      {
+        "id": "g-006",
+        "query": "采购预付款最多可以占合同金额的多少？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "gold": [
+          "采购付款管理规定-c3"
+        ],
+        "retrieved": [
+          "采购付款管理规定-c3",
+          "采购付款管理规定-c0",
+          "采购付款管理规定-c1",
+          "采购付款管理规定-c2",
+          "费用报销管理办法-c3"
+        ],
+        "n_retrieved": 5,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 321.1,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 5
+        }
+      },
+      {
+        "id": "g-007",
+        "query": "薪酬数据哪些人可以查看？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "gold": [
+          "薪酬保密制度-c1"
+        ],
+        "retrieved": [
+          "薪酬保密制度-c0",
+          "薪酬保密制度-c1",
+          "薪酬保密制度-c3",
+          "薪酬保密制度-c2"
+        ],
+        "n_retrieved": 4,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 0.5,
+        "ndcg@10": 0.6309297535714575,
+        "latency_ms": 336.5,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 4
+        }
+      },
+      {
+        "id": "g-008",
+        "query": "工作日加班按几倍计算？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "gold": [
+          "员工考勤管理制度-c4"
+        ],
+        "retrieved": [
+          "员工考勤管理制度-c4",
+          "员工考勤管理制度-c2",
+          "员工考勤管理制度-c1"
+        ],
+        "n_retrieved": 3,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 306.4,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 3
+        }
+      },
+      {
+        "id": "g-009",
+        "query": "单笔 6 万元的费用报销需要谁审批？",
+        "query_type": "process",
+        "dataset": "golden",
+        "gold": [
+          "费用报销管理办法-c3"
+        ],
+        "retrieved": [
+          "费用报销管理办法-c3",
+          "采购付款管理规定-c3",
+          "费用报销管理办法-c0",
+          "费用报销管理办法-c4",
+          "费用报销管理办法-c1",
+          "费用报销管理办法-c2",
+          "采购付款管理规定-c0"
+        ],
+        "n_retrieved": 7,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 324.9,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 7
+        }
+      },
+      {
+        "id": "g-010",
+        "query": "单笔 8 万元的采购付款由谁审批？",
+        "query_type": "process",
+        "dataset": "golden",
+        "gold": [
+          "采购付款管理规定-c3"
+        ],
+        "retrieved": [
+          "采购付款管理规定-c3",
+          "费用报销管理办法-c3",
+          "采购付款管理规定-c0",
+          "采购付款管理规定-c2",
+          "采购付款管理规定-c1"
+        ],
+        "n_retrieved": 5,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 307.9,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 5
+        }
+      },
+      {
+        "id": "g-011",
+        "query": "单笔 3 万元的费用报销要走什么审批流程？",
+        "query_type": "process",
+        "dataset": "golden",
+        "gold": [
+          "费用报销管理办法-c3"
+        ],
+        "retrieved": [
+          "费用报销管理办法-c3",
+          "采购付款管理规定-c3",
+          "费用报销管理办法-c0",
+          "费用报销管理办法-c4",
+          "费用报销管理办法-c1",
+          "费用报销管理办法-c2"
+        ],
+        "n_retrieved": 6,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 413.4,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 6
+        }
+      },
+      {
+        "id": "g-012",
+        "query": "公司的标准工时是怎么规定的？",
+        "query_type": "process",
+        "dataset": "golden",
+        "gold": [
+          "员工考勤管理制度-c2"
+        ],
+        "retrieved": [
+          "员工考勤管理制度-c2",
+          "员工考勤管理制度-c1",
+          "员工考勤管理制度-c0",
+          "员工考勤管理制度-c4",
+          "员工考勤管理制度-c3"
+        ],
+        "n_retrieved": 5,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 509.0,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 5
+        }
+      },
+      {
+        "id": "g-013",
+        "query": "费用发生超过 30 天才提交报销还能报吗？",
+        "query_type": "process",
+        "dataset": "golden",
+        "gold": [
+          "费用报销管理办法-c4"
+        ],
+        "retrieved": [
+          "费用报销管理办法-c4",
+          "采购付款管理规定-c2",
+          "采购付款管理规定-c3",
+          "费用报销管理办法-c0",
+          "费用报销管理办法-c3",
+          "员工考勤管理制度-c3",
+          "费用报销管理办法-c1",
+          "费用报销管理办法-c2"
+        ],
+        "n_retrieved": 8,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 404.5,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 8
+        }
+      },
+      {
+        "id": "g-014",
+        "query": "采购付款的申请要在什么时间之前提交？",
+        "query_type": "process",
+        "dataset": "golden",
+        "gold": [
+          "采购付款管理规定-c2"
+        ],
+        "retrieved": [
+          "采购付款管理规定-c0",
+          "采购付款管理规定-c2",
+          "采购付款管理规定-c1",
+          "采购付款管理规定-c3",
+          "费用报销管理办法-c4"
+        ],
+        "n_retrieved": 5,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 0.5,
+        "ndcg@10": 0.6309297535714575,
+        "latency_ms": 375.6,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 5
+        }
+      },
+      {
+        "id": "g-015",
+        "query": "加班申请要走什么流程？",
+        "query_type": "process",
+        "dataset": "golden",
+        "gold": [
+          "员工考勤管理制度-c4"
+        ],
+        "retrieved": [
+          "员工考勤管理制度-c4",
+          "员工考勤管理制度-c1",
+          "员工考勤管理制度-c3",
+          "员工考勤管理制度-c2",
+          "费用报销管理办法-c4",
+          "采购付款管理规定-c3",
+          "员工考勤管理制度-c0"
+        ],
+        "n_retrieved": 7,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 484.4,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 7
+        }
+      },
+      {
+        "id": "g-016",
+        "query": "什么情况下可以调阅他人的薪酬数据？",
+        "query_type": "process",
+        "dataset": "golden",
+        "gold": [
+          "薪酬保密制度-c3"
+        ],
+        "retrieved": [
+          "薪酬保密制度-c3",
+          "薪酬保密制度-c0",
+          "薪酬保密制度-c1",
+          "薪酬保密制度-c2"
+        ],
+        "n_retrieved": 4,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 312.2,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 4
+        }
+      },
+      {
+        "id": "g-017",
+        "query": "报销和采购付款的审批权限分别是怎么划分的？",
+        "query_type": "multi_hop",
+        "dataset": "golden",
+        "gold": [
+          "费用报销管理办法-c3",
+          "采购付款管理规定-c3"
+        ],
+        "retrieved": [
+          "采购付款管理规定-c0",
+          "费用报销管理办法-c0",
+          "费用报销管理办法-c3",
+          "采购付款管理规定-c3",
+          "费用报销管理办法-c1",
+          "采购付款管理规定-c1",
+          "采购付款管理规定-c2",
+          "费用报销管理办法-c4"
+        ],
+        "n_retrieved": 8,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 0.3333333333333333,
+        "ndcg@10": 0.5706417189553201,
+        "latency_ms": 470.1,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 8
+        }
+      },
+      {
+        "id": "g-018",
+        "query": "报销申请和采购付款申请各自要求在多少日内提交？",
+        "query_type": "multi_hop",
+        "dataset": "golden",
+        "gold": [
+          "费用报销管理办法-c4",
+          "采购付款管理规定-c2"
+        ],
+        "retrieved": [
+          "费用报销管理办法-c4",
+          "费用报销管理办法-c0",
+          "采购付款管理规定-c0",
+          "采购付款管理规定-c2",
+          "费用报销管理办法-c3",
+          "费用报销管理办法-c1",
+          "采购付款管理规定-c1",
+          "采购付款管理规定-c3",
+          "员工考勤管理制度-c3"
+        ],
+        "n_retrieved": 9,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 0.8772153153380493,
+        "latency_ms": 289.2,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 9
+        }
+      },
+      {
+        "id": "g-019",
+        "query": "单笔 6 万元的费用报销和单笔 12 万元的采购付款，分别由谁审批？",
+        "query_type": "multi_hop",
+        "dataset": "golden",
+        "gold": [
+          "费用报销管理办法-c3",
+          "采购付款管理规定-c3"
+        ],
+        "retrieved": [
+          "费用报销管理办法-c3",
+          "采购付款管理规定-c3",
+          "费用报销管理办法-c0",
+          "员工考勤管理制度-c2",
+          "采购付款管理规定-c0",
+          "费用报销管理办法-c4",
+          "费用报销管理办法-c1",
+          "采购付款管理规定-c1",
+          "采购付款管理规定-c2"
+        ],
+        "n_retrieved": 9,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 259.4,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 9
+        }
+      },
+      {
+        "id": "g-020",
+        "query": "请假和加班分别需要谁审批？",
+        "query_type": "multi_hop",
+        "dataset": "golden",
+        "gold": [
+          "员工考勤管理制度-c3",
+          "员工考勤管理制度-c4"
+        ],
+        "retrieved": [
+          "员工考勤管理制度-c4",
+          "员工考勤管理制度-c3",
+          "员工考勤管理制度-c1",
+          "采购付款管理规定-c3",
+          "员工考勤管理制度-c2"
+        ],
+        "n_retrieved": 5,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 392.0,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 5
+        }
+      },
+      {
+        "id": "g-021",
+        "query": "哪些制度明确适用于实习生？",
+        "query_type": "multi_hop",
+        "dataset": "golden",
+        "gold": [
+          "费用报销管理办法-c1",
+          "员工考勤管理制度-c1"
+        ],
+        "retrieved": [
+          "费用报销管理办法-c1",
+          "员工考勤管理制度-c1",
+          "员工考勤管理制度-c0"
+        ],
+        "n_retrieved": 3,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 333.2,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 3
+        }
+      },
+      {
+        "id": "g-022",
+        "query": "薪酬专员在什么条件下可以对外提供他人的薪酬数据？",
+        "query_type": "multi_hop",
+        "dataset": "golden",
+        "gold": [
+          "薪酬保密制度-c2",
+          "薪酬保密制度-c3"
+        ],
+        "retrieved": [
+          "薪酬保密制度-c0",
+          "薪酬保密制度-c1",
+          "薪酬保密制度-c3",
+          "薪酬保密制度-c2"
+        ],
+        "n_retrieved": 4,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 0.3333333333333333,
+        "ndcg@10": 0.5706417189553201,
+        "latency_ms": 338.3,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 4
+        }
+      },
+      {
+        "id": "n-001",
+        "query": "公司年会在什么时候举办？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "gold": [],
+        "retrieved": [],
+        "n_retrieved": 0,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 327.0,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 0
+        }
+      },
+      {
+        "id": "n-002",
+        "query": "员工购车有补贴吗？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "gold": [],
+        "retrieved": [
+          "员工考勤管理制度-c0"
+        ],
+        "n_retrieved": 1,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 448.1,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 1
+        }
+      },
+      {
+        "id": "n-003",
+        "query": "出差可以坐头等舱吗？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "gold": [],
+        "retrieved": [],
+        "n_retrieved": 0,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 300.4,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 0
+        }
+      },
+      {
+        "id": "n-004",
+        "query": "试用期是几个月？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "gold": [],
+        "retrieved": [],
+        "n_retrieved": 0,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 361.4,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 0
+        }
+      },
+      {
+        "id": "n-005",
+        "query": "公司股票期权是怎么分配的？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "gold": [],
+        "retrieved": [],
+        "n_retrieved": 0,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 398.2,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 0
+        }
+      },
+      {
+        "id": "n-006",
+        "query": "办公用品的单次采购限额是多少？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "gold": [],
+        "retrieved": [
+          "采购付款管理规定-c0",
+          "费用报销管理办法-c3",
+          "采购付款管理规定-c3",
+          "采购付款管理规定-c1",
+          "费用报销管理办法-c0"
+        ],
+        "n_retrieved": 5,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 333.1,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 5
+        }
+      },
+      {
+        "id": "n-007",
+        "query": "员工结婚有几天婚假？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "gold": [],
+        "retrieved": [
+          "员工考勤管理制度-c3",
+          "员工考勤管理制度-c0",
+          "员工考勤管理制度-c2"
+        ],
+        "n_retrieved": 3,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 325.0,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 3
+        }
+      },
+      {
+        "id": "n-008",
+        "query": "离职需要提前多久提出？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "gold": [],
+        "retrieved": [
+          "员工考勤管理制度-c3",
+          "员工考勤管理制度-c2"
+        ],
+        "n_retrieved": 2,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 362.8,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 2
+        }
+      },
+      {
+        "id": "u-001",
+        "query": "薪酬专员需要遵守哪些保密要求？",
+        "query_type": "unauthorized",
+        "dataset": "unauthorized",
+        "gold": [],
+        "retrieved": [],
+        "n_retrieved": 0,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 378.4,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 0
+        }
+      },
+      {
+        "id": "u-002",
+        "query": "泄露薪酬信息会被怎么处理？",
+        "query_type": "unauthorized",
+        "dataset": "unauthorized",
+        "gold": [],
+        "retrieved": [],
+        "n_retrieved": 0,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 320.0,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 0
+        }
+      },
+      {
+        "id": "u-003",
+        "query": "什么法定事由可以调阅薪酬数据？",
+        "query_type": "unauthorized",
+        "dataset": "unauthorized",
+        "gold": [],
+        "retrieved": [],
+        "n_retrieved": 0,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 311.2,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 0
+        }
+      },
+      {
+        "id": "u-004",
+        "query": "薪酬数据哪些人可以查看？",
+        "query_type": "unauthorized",
+        "dataset": "unauthorized",
+        "gold": [],
+        "retrieved": [],
+        "n_retrieved": 0,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 327.8,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 0
+        }
+      },
+      {
+        "id": "u-005",
+        "query": "薪酬专员的保密义务包括哪些？",
+        "query_type": "unauthorized",
+        "dataset": "unauthorized",
+        "gold": [],
+        "retrieved": [],
+        "n_retrieved": 0,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 262.7,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 0
+        }
+      },
+      {
+        "id": "u-006",
+        "query": "员工之间可以互相打听工资吗？",
+        "query_type": "unauthorized",
+        "dataset": "unauthorized",
+        "gold": [],
+        "retrieved": [
+          "员工考勤管理制度-c0"
+        ],
+        "n_retrieved": 1,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 344.3,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "skipped:disabled_by_caller",
+          "fused": 1
+        }
+      }
+    ],
+    "summary": {
+      "overall": {
+        "n": 22,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 0.8939,
+        "ndcg@10": 0.9218,
+        "p50_ms": 337.8
+      },
+      "by_query_type": {
+        "multi_hop": {
+          "n": 6,
+          "recall@5": 1.0,
+          "recall@10": 1.0,
+          "recall@50": 1.0,
+          "mrr@10": 0.7778,
+          "ndcg@10": 0.8364,
+          "p50_ms": 335.8
+        },
+        "process": {
+          "n": 8,
+          "recall@5": 1.0,
+          "recall@10": 1.0,
+          "recall@50": 1.0,
+          "mrr@10": 0.9375,
+          "ndcg@10": 0.9539,
+          "p50_ms": 390.1
+        },
+        "single_hop": {
+          "n": 8,
+          "recall@5": 1.0,
+          "recall@10": 1.0,
+          "recall@50": 1.0,
+          "mrr@10": 0.9375,
+          "ndcg@10": 0.9539,
+          "p50_ms": 336.9
+        }
+      },
+      "attribute_counts": {},
+      "rerank_status": {
+        "skipped": 36
+      }
+    }
+  },
+  "ret-baseline__rerank1": {
+    "cases": [
+      {
+        "id": "g-001",
+        "query": "事假需要提前多久申请？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "gold": [
+          "员工考勤管理制度-c3"
+        ],
+        "retrieved": [
+          "员工考勤管理制度-c3",
+          "员工考勤管理制度-c4",
+          "费用报销管理办法-c4",
+          "员工考勤管理制度-c2"
+        ],
+        "n_retrieved": 4,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 558.5,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 4
+        }
+      },
+      {
+        "id": "g-002",
+        "query": "请病假需要提供什么材料？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "gold": [
+          "员工考勤管理制度-c3"
+        ],
+        "retrieved": [
+          "员工考勤管理制度-c3",
+          "员工考勤管理制度-c1"
+        ],
+        "n_retrieved": 2,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 594.0,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 2
+        }
+      },
+      {
+        "id": "g-003",
+        "query": "司龄满 5 年的员工有几天年假？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "gold": [
+          "员工考勤管理制度-c3"
+        ],
+        "retrieved": [
+          "员工考勤管理制度-c3",
+          "员工考勤管理制度-c4",
+          "费用报销管理办法-c4",
+          "费用报销管理办法-c3"
+        ],
+        "n_retrieved": 4,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 527.0,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 4
+        }
+      },
+      {
+        "id": "g-004",
+        "query": "一线城市差旅住宿的标准是多少？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "gold": [
+          "费用报销管理办法-c2"
+        ],
+        "retrieved": [
+          "费用报销管理办法-c2"
+        ],
+        "n_retrieved": 1,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 561.2,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 1
+        }
+      },
+      {
+        "id": "g-005",
+        "query": "报销款项审批通过后多久发放？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "gold": [
+          "费用报销管理办法-c4"
+        ],
+        "retrieved": [
+          "费用报销管理办法-c4",
+          "费用报销管理办法-c3",
+          "采购付款管理规定-c2",
+          "采购付款管理规定-c3",
+          "费用报销管理办法-c1",
+          "费用报销管理办法-c0",
+          "员工考勤管理制度-c3",
+          "费用报销管理办法-c2",
+          "员工考勤管理制度-c4",
+          "采购付款管理规定-c0"
+        ],
+        "n_retrieved": 10,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 573.0,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 10
+        }
+      },
+      {
+        "id": "g-006",
+        "query": "采购预付款最多可以占合同金额的多少？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "gold": [
+          "采购付款管理规定-c3"
+        ],
+        "retrieved": [
+          "采购付款管理规定-c3",
+          "采购付款管理规定-c0",
+          "采购付款管理规定-c2",
+          "采购付款管理规定-c1",
+          "费用报销管理办法-c3"
+        ],
+        "n_retrieved": 5,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 550.7,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 5
+        }
+      },
+      {
+        "id": "g-007",
+        "query": "薪酬数据哪些人可以查看？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "gold": [
+          "薪酬保密制度-c1"
+        ],
+        "retrieved": [
+          "薪酬保密制度-c1",
+          "薪酬保密制度-c3",
+          "薪酬保密制度-c2",
+          "薪酬保密制度-c0"
+        ],
+        "n_retrieved": 4,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 572.1,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 4
+        }
+      },
+      {
+        "id": "g-008",
+        "query": "工作日加班按几倍计算？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "gold": [
+          "员工考勤管理制度-c4"
+        ],
+        "retrieved": [
+          "员工考勤管理制度-c4",
+          "员工考勤管理制度-c1",
+          "员工考勤管理制度-c2"
+        ],
+        "n_retrieved": 3,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 534.7,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 3
+        }
+      },
+      {
+        "id": "g-009",
+        "query": "单笔 6 万元的费用报销需要谁审批？",
+        "query_type": "process",
+        "dataset": "golden",
+        "gold": [
+          "费用报销管理办法-c3"
+        ],
+        "retrieved": [
+          "费用报销管理办法-c3",
+          "采购付款管理规定-c3",
+          "费用报销管理办法-c1",
+          "费用报销管理办法-c0",
+          "费用报销管理办法-c4",
+          "费用报销管理办法-c2",
+          "采购付款管理规定-c0"
+        ],
+        "n_retrieved": 7,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 605.9,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 7
+        }
+      },
+      {
+        "id": "g-010",
+        "query": "单笔 8 万元的采购付款由谁审批？",
+        "query_type": "process",
+        "dataset": "golden",
+        "gold": [
+          "采购付款管理规定-c3"
+        ],
+        "retrieved": [
+          "采购付款管理规定-c3",
+          "费用报销管理办法-c3",
+          "采购付款管理规定-c0",
+          "采购付款管理规定-c2",
+          "采购付款管理规定-c1"
+        ],
+        "n_retrieved": 5,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 637.3,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 5
+        }
+      },
+      {
+        "id": "g-011",
+        "query": "单笔 3 万元的费用报销要走什么审批流程？",
+        "query_type": "process",
+        "dataset": "golden",
+        "gold": [
+          "费用报销管理办法-c3"
+        ],
+        "retrieved": [
+          "费用报销管理办法-c3",
+          "费用报销管理办法-c0",
+          "费用报销管理办法-c4",
+          "采购付款管理规定-c3",
+          "费用报销管理办法-c1",
+          "费用报销管理办法-c2"
+        ],
+        "n_retrieved": 6,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 653.3,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 6
+        }
+      },
+      {
+        "id": "g-012",
+        "query": "公司的标准工时是怎么规定的？",
+        "query_type": "process",
+        "dataset": "golden",
+        "gold": [
+          "员工考勤管理制度-c2"
+        ],
+        "retrieved": [
+          "员工考勤管理制度-c2",
+          "员工考勤管理制度-c1",
+          "员工考勤管理制度-c4",
+          "员工考勤管理制度-c0",
+          "员工考勤管理制度-c3"
+        ],
+        "n_retrieved": 5,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 625.4,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 5
+        }
+      },
+      {
+        "id": "g-013",
+        "query": "费用发生超过 30 天才提交报销还能报吗？",
+        "query_type": "process",
+        "dataset": "golden",
+        "gold": [
+          "费用报销管理办法-c4"
+        ],
+        "retrieved": [
+          "费用报销管理办法-c4",
+          "费用报销管理办法-c3",
+          "费用报销管理办法-c2",
+          "采购付款管理规定-c2",
+          "费用报销管理办法-c0",
+          "费用报销管理办法-c1",
+          "采购付款管理规定-c3",
+          "员工考勤管理制度-c3"
+        ],
+        "n_retrieved": 8,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 659.0,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 8
+        }
+      },
+      {
+        "id": "g-014",
+        "query": "采购付款的申请要在什么时间之前提交？",
+        "query_type": "process",
+        "dataset": "golden",
+        "gold": [
+          "采购付款管理规定-c2"
+        ],
+        "retrieved": [
+          "采购付款管理规定-c2",
+          "采购付款管理规定-c0",
+          "费用报销管理办法-c4",
+          "采购付款管理规定-c3",
+          "采购付款管理规定-c1"
+        ],
+        "n_retrieved": 5,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 605.9,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 5
+        }
+      },
+      {
+        "id": "g-015",
+        "query": "加班申请要走什么流程？",
+        "query_type": "process",
+        "dataset": "golden",
+        "gold": [
+          "员工考勤管理制度-c4"
+        ],
+        "retrieved": [
+          "员工考勤管理制度-c4",
+          "员工考勤管理制度-c3",
+          "员工考勤管理制度-c1",
+          "费用报销管理办法-c4",
+          "采购付款管理规定-c3",
+          "员工考勤管理制度-c0",
+          "员工考勤管理制度-c2"
+        ],
+        "n_retrieved": 7,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 587.9,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 7
+        }
+      },
+      {
+        "id": "g-016",
+        "query": "什么情况下可以调阅他人的薪酬数据？",
+        "query_type": "process",
+        "dataset": "golden",
+        "gold": [
+          "薪酬保密制度-c3"
+        ],
+        "retrieved": [
+          "薪酬保密制度-c3",
+          "薪酬保密制度-c1",
+          "薪酬保密制度-c2",
+          "薪酬保密制度-c0"
+        ],
+        "n_retrieved": 4,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 655.6,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 4
+        }
+      },
+      {
+        "id": "g-017",
+        "query": "报销和采购付款的审批权限分别是怎么划分的？",
+        "query_type": "multi_hop",
+        "dataset": "golden",
+        "gold": [
+          "费用报销管理办法-c3",
+          "采购付款管理规定-c3"
+        ],
+        "retrieved": [
+          "费用报销管理办法-c3",
+          "费用报销管理办法-c1",
+          "采购付款管理规定-c3",
+          "采购付款管理规定-c0",
+          "采购付款管理规定-c2",
+          "费用报销管理办法-c4",
+          "费用报销管理办法-c0",
+          "采购付款管理规定-c1"
+        ],
+        "n_retrieved": 8,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 0.9197207891481876,
+        "latency_ms": 578.5,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 8
+        }
+      },
+      {
+        "id": "g-018",
+        "query": "报销申请和采购付款申请各自要求在多少日内提交？",
+        "query_type": "multi_hop",
+        "dataset": "golden",
+        "gold": [
+          "费用报销管理办法-c4",
+          "采购付款管理规定-c2"
+        ],
+        "retrieved": [
+          "采购付款管理规定-c2",
+          "费用报销管理办法-c4",
+          "采购付款管理规定-c0",
+          "费用报销管理办法-c0",
+          "费用报销管理办法-c3",
+          "费用报销管理办法-c1",
+          "采购付款管理规定-c3",
+          "采购付款管理规定-c1",
+          "员工考勤管理制度-c3"
+        ],
+        "n_retrieved": 9,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 601.6,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 9
+        }
+      },
+      {
+        "id": "g-019",
+        "query": "单笔 6 万元的费用报销和单笔 12 万元的采购付款，分别由谁审批？",
+        "query_type": "multi_hop",
+        "dataset": "golden",
+        "gold": [
+          "费用报销管理办法-c3",
+          "采购付款管理规定-c3"
+        ],
+        "retrieved": [
+          "费用报销管理办法-c3",
+          "采购付款管理规定-c3",
+          "费用报销管理办法-c1",
+          "费用报销管理办法-c0",
+          "采购付款管理规定-c0",
+          "费用报销管理办法-c4",
+          "采购付款管理规定-c1",
+          "采购付款管理规定-c2",
+          "员工考勤管理制度-c2"
+        ],
+        "n_retrieved": 9,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 678.3,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 9
+        }
+      },
+      {
+        "id": "g-020",
+        "query": "请假和加班分别需要谁审批？",
+        "query_type": "multi_hop",
+        "dataset": "golden",
+        "gold": [
+          "员工考勤管理制度-c3",
+          "员工考勤管理制度-c4"
+        ],
+        "retrieved": [
+          "员工考勤管理制度-c4",
+          "员工考勤管理制度-c3",
+          "员工考勤管理制度-c1",
+          "采购付款管理规定-c3",
+          "员工考勤管理制度-c2"
+        ],
+        "n_retrieved": 5,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 527.4,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 5
+        }
+      },
+      {
+        "id": "g-021",
+        "query": "哪些制度明确适用于实习生？",
+        "query_type": "multi_hop",
+        "dataset": "golden",
+        "gold": [
+          "费用报销管理办法-c1",
+          "员工考勤管理制度-c1"
+        ],
+        "retrieved": [
+          "费用报销管理办法-c1",
+          "员工考勤管理制度-c1",
+          "员工考勤管理制度-c0"
+        ],
+        "n_retrieved": 3,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 1.0,
+        "latency_ms": 794.7,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 3
+        }
+      },
+      {
+        "id": "g-022",
+        "query": "薪酬专员在什么条件下可以对外提供他人的薪酬数据？",
+        "query_type": "multi_hop",
+        "dataset": "golden",
+        "gold": [
+          "薪酬保密制度-c2",
+          "薪酬保密制度-c3"
+        ],
+        "retrieved": [
+          "薪酬保密制度-c2",
+          "薪酬保密制度-c1",
+          "薪酬保密制度-c3",
+          "薪酬保密制度-c0"
+        ],
+        "n_retrieved": 4,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 0.9197207891481876,
+        "latency_ms": 637.4,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 4
+        }
+      },
+      {
+        "id": "n-001",
+        "query": "公司年会在什么时候举办？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "gold": [],
+        "retrieved": [],
+        "n_retrieved": 0,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 357.1,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "off",
+          "fused": 0
+        }
+      },
+      {
+        "id": "n-002",
+        "query": "员工购车有补贴吗？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "gold": [],
+        "retrieved": [
+          "员工考勤管理制度-c0"
+        ],
+        "n_retrieved": 1,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 692.0,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 1
+        }
+      },
+      {
+        "id": "n-003",
+        "query": "出差可以坐头等舱吗？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "gold": [],
+        "retrieved": [],
+        "n_retrieved": 0,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 324.4,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "off",
+          "fused": 0
+        }
+      },
+      {
+        "id": "n-004",
+        "query": "试用期是几个月？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "gold": [],
+        "retrieved": [],
+        "n_retrieved": 0,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 332.9,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "off",
+          "fused": 0
+        }
+      },
+      {
+        "id": "n-005",
+        "query": "公司股票期权是怎么分配的？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "gold": [],
+        "retrieved": [],
+        "n_retrieved": 0,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 344.3,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "off",
+          "fused": 0
+        }
+      },
+      {
+        "id": "n-006",
+        "query": "办公用品的单次采购限额是多少？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "gold": [],
+        "retrieved": [
+          "采购付款管理规定-c3",
+          "费用报销管理办法-c3",
+          "采购付款管理规定-c1",
+          "采购付款管理规定-c0",
+          "费用报销管理办法-c0"
+        ],
+        "n_retrieved": 5,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 608.4,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 5
+        }
+      },
+      {
+        "id": "n-007",
+        "query": "员工结婚有几天婚假？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "gold": [],
+        "retrieved": [
+          "员工考勤管理制度-c3",
+          "员工考勤管理制度-c2",
+          "员工考勤管理制度-c0"
+        ],
+        "n_retrieved": 3,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 602.6,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 3
+        }
+      },
+      {
+        "id": "n-008",
+        "query": "离职需要提前多久提出？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "gold": [],
+        "retrieved": [
+          "员工考勤管理制度-c3",
+          "员工考勤管理制度-c2"
+        ],
+        "n_retrieved": 2,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 553.1,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 2
+        }
+      },
+      {
+        "id": "u-001",
+        "query": "薪酬专员需要遵守哪些保密要求？",
+        "query_type": "unauthorized",
+        "dataset": "unauthorized",
+        "gold": [],
+        "retrieved": [],
+        "n_retrieved": 0,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 330.5,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "off",
+          "fused": 0
+        }
+      },
+      {
+        "id": "u-002",
+        "query": "泄露薪酬信息会被怎么处理？",
+        "query_type": "unauthorized",
+        "dataset": "unauthorized",
+        "gold": [],
+        "retrieved": [],
+        "n_retrieved": 0,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 262.9,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "off",
+          "fused": 0
+        }
+      },
+      {
+        "id": "u-003",
+        "query": "什么法定事由可以调阅薪酬数据？",
+        "query_type": "unauthorized",
+        "dataset": "unauthorized",
+        "gold": [],
+        "retrieved": [],
+        "n_retrieved": 0,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 331.7,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "off",
+          "fused": 0
+        }
+      },
+      {
+        "id": "u-004",
+        "query": "薪酬数据哪些人可以查看？",
+        "query_type": "unauthorized",
+        "dataset": "unauthorized",
+        "gold": [],
+        "retrieved": [],
+        "n_retrieved": 0,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 405.4,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "off",
+          "fused": 0
+        }
+      },
+      {
+        "id": "u-005",
+        "query": "薪酬专员的保密义务包括哪些？",
+        "query_type": "unauthorized",
+        "dataset": "unauthorized",
+        "gold": [],
+        "retrieved": [],
+        "n_retrieved": 0,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 323.1,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "off",
+          "fused": 0
+        }
+      },
+      {
+        "id": "u-006",
+        "query": "员工之间可以互相打听工资吗？",
+        "query_type": "unauthorized",
+        "dataset": "unauthorized",
+        "gold": [],
+        "retrieved": [
+          "员工考勤管理制度-c0"
+        ],
+        "n_retrieved": 1,
+        "recall@5": null,
+        "recall@10": null,
+        "recall@50": null,
+        "mrr@10": null,
+        "ndcg@10": null,
+        "latency_ms": 590.6,
+        "notes": {
+          "dense": true,
+          "bm25": "pg_search",
+          "rerank": "ok:BAAI/bge-reranker-v2-m3",
+          "fused": 1
+        }
+      }
+    ],
+    "summary": {
+      "overall": {
+        "n": 22,
+        "recall@5": 1.0,
+        "recall@10": 1.0,
+        "recall@50": 1.0,
+        "mrr@10": 1.0,
+        "ndcg@10": 0.9927,
+        "p50_ms": 597.8
+      },
+      "by_query_type": {
+        "multi_hop": {
+          "n": 6,
+          "recall@5": 1.0,
+          "recall@10": 1.0,
+          "recall@50": 1.0,
+          "mrr@10": 1.0,
+          "ndcg@10": 0.9732,
+          "p50_ms": 619.5
+        },
+        "process": {
+          "n": 8,
+          "recall@5": 1.0,
+          "recall@10": 1.0,
+          "recall@50": 1.0,
+          "mrr@10": 1.0,
+          "ndcg@10": 1.0,
+          "p50_ms": 631.3
+        },
+        "single_hop": {
+          "n": 8,
+          "recall@5": 1.0,
+          "recall@10": 1.0,
+          "recall@50": 1.0,
+          "mrr@10": 1.0,
+          "ndcg@10": 1.0,
+          "p50_ms": 559.9
+        }
+      },
+      "attribute_counts": {},
+      "rerank_status": {
+        "ok:BAAI/bge-reranker-v2-m3": 27,
+        "off": 9
+      }
+    }
+  }
+}

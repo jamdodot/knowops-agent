@@ -30,6 +30,8 @@ class State(TypedDict, total=False):
     rounds: int
     evidence: list[dict[str, Any]]
     sufficiency: float
+    grade_verdict: str | None
+    grade_missing: str | None
     answer: str
     citations: list[dict[str, Any]]
     finish_reason: str

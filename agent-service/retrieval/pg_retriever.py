@@ -37,6 +37,7 @@ from typing import Any
 
 from .base import Evidence
 from .embed import embed_one, to_vector_literal
+from .rerank import rerank, rerank_available
 
 # permitted CTE 里的鉴权模板（与 docs/05 §3 逐字对齐；只取 id，正文按主键回表）
 _PERMITTED_SQL = """
@@ -110,12 +111,26 @@ class PgRetriever:
         self.last_backend_notes: dict[str, Any] = {}
 
     # ------------------------------------------------------------------ 检索
-    def hybrid_retrieve(self, query: str, subject: Any, *, top_k: int = 5) -> list[Evidence]:
+    def hybrid_retrieve(
+        self,
+        query: str,
+        subject: Any,
+        *,
+        top_k: int = 5,
+        use_rerank: bool | None = None,
+        recall_n: int | None = None,
+    ) -> list[Evidence]:
+        """混合检索。`use_rerank=False` 可强制关掉重排（评测 A/B 用）。
+
+        召回窗口比 `top_k` 宽得多：两路各取 `recall_n`（默认 50），RRF 融合后
+        取前 50 送 rerank，最后才截到 `top_k`。**别把 `limit` 设成 `top_k*2`**——
+        只融合 10 条再重排，rerank 能做的只是在 10 条里重排，等于白花钱。
+        """
         if not self._dsn or subject is None:
             return []
         import psycopg
 
-        limit = max(top_k * 2, top_k)  # 融合前多取一点，融合后再截
+        limit = int(recall_n or os.environ.get("KW_RECALL_N", "50"))
         params: dict[str, Any] = {
             "user_id": subject.user_id,
             "depts": list(subject.dept_paths or []),
@@ -132,7 +147,7 @@ class PgRetriever:
 
         bm25_rows: list[Evidence] = []
         dense_rows: list[Evidence] = []
-        notes: dict[str, Any] = {"dense": bool(vec), "bm25": None}
+        notes: dict[str, Any] = {"dense": bool(vec), "bm25": None, "rerank": "off"}
 
         with psycopg.connect(self._dsn, connect_timeout=5) as conn:
             # 读路径自动提交：BM25 失败后要立刻试退路，事务里失败会把连接打进
@@ -143,8 +158,22 @@ class PgRetriever:
             if vec:
                 dense_rows = self._dense(conn, params, notes)
 
+        fused = _rrf(bm25_rows, dense_rows)
+        notes["fused"] = len(fused)
+
+        # rerank 输入截到 50：再宽对质量没帮助，只是把 token 账单做大
+        candidates = fused[: min(50, len(fused))]
+        want_rerank = rerank_available() if use_rerank is None else use_rerank
+        if want_rerank and candidates:
+            reranked, status = rerank(query, candidates)
+            notes["rerank"] = status
+            if reranked is not None:
+                candidates = reranked
+        elif not want_rerank:
+            notes["rerank"] = "skipped:disabled_by_caller"
+
         self.last_backend_notes = notes
-        return _rrf(bm25_rows, dense_rows)[:top_k]
+        return candidates[:top_k]
 
     # ------------------------------------------------------------------ 分支
     def _bm25(

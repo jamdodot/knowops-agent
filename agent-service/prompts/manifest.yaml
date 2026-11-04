@@ -33,12 +33,12 @@ prompts:
 
   - id: knowledge.grade_evidence
     path: prompts/knowledge/grade_evidence.md
-    version: 1
+    version: 2
     role: classify
     owner: ai-platform
     variables: [query, evidence]
     gate: smoke
-    template_sha256: "09391049d06f96a680fddac459bec128e24d7c351b8a424bbd539cc3bcda2f72"
+    template_sha256: "3a8f461444dba1b6157d0a63d97a37d8673a01e67ad969c998027dbe37e505ec"
 
   - id: knowledge.rewrite_query
     path: prompts/knowledge/rewrite_query.md

@@ -1,0 +1,931 @@
+{
+  "tag": "b2-agentic-graded",
+  "created_at": "2026-11-04T19:47:13+08:00",
+  "git_sha": "e920415",
+  "config": {
+    "datasets": [
+      "golden",
+      "no_answer",
+      "unauthorized"
+    ],
+    "n_cases": 36,
+    "graph": "graph",
+    "llm_mode": "online",
+    "rerank_model": "BAAI/bge-reranker-v2-m3",
+    "dense_min_sim": "0.55",
+    "recall_n": "50"
+  },
+  "b2-agentic-graded": {
+    "cases": [
+      {
+        "id": "g-001",
+        "query": "事假需要提前多久申请？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "subject": "employee",
+        "answer": "事假须提前一天在系统提交申请，经直属上级审批后生效 {e_员工考勤管理制度_员工考勤管理制度-c3}。",
+        "n_citations": 4,
+        "cited_docs": [
+          "员工考勤管理制度",
+          "费用报销管理办法"
+        ],
+        "finish_reason": "answered",
+        "latency_ms": 7092.2,
+        "usage": {
+          "input_tokens": 1598,
+          "output_tokens": 570,
+          "cost_usd": 0.000582,
+          "steps": 6
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": true,
+        "correct": true
+      },
+      {
+        "id": "g-002",
+        "query": "请病假需要提供什么材料？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "subject": "employee",
+        "answer": "请病假须提供二级以上医院出具的病假证明 {e_员工考勤管理制度_员工考勤管理制度-c3}。",
+        "n_citations": 2,
+        "cited_docs": [
+          "员工考勤管理制度"
+        ],
+        "finish_reason": "answered",
+        "latency_ms": 6924.2,
+        "usage": {
+          "input_tokens": 1250,
+          "output_tokens": 468,
+          "cost_usd": 0.000468,
+          "steps": 6
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": true,
+        "correct": true
+      },
+      {
+        "id": "g-003",
+        "query": "司龄满 5 年的员工有几天年假？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "subject": "employee",
+        "answer": "司龄满 5 年的员工有 10 天年假 {e_员工考勤管理制度_员工考勤管理制度-c3}。",
+        "n_citations": 1,
+        "cited_docs": [
+          "员工考勤管理制度"
+        ],
+        "finish_reason": "answered",
+        "latency_ms": 6582.4,
+        "usage": {
+          "input_tokens": 1126,
+          "output_tokens": 610,
+          "cost_usd": 0.000535,
+          "steps": 6
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": true,
+        "correct": true
+      },
+      {
+        "id": "g-004",
+        "query": "一线城市差旅住宿的标准是多少？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "subject": "employee",
+        "answer": "一线城市差旅住宿标准为每晚不超过 500 元。{e_费用报销管理办法_费用报销管理办法-c2}",
+        "n_citations": 2,
+        "cited_docs": [
+          "费用报销管理办法"
+        ],
+        "finish_reason": "answered",
+        "latency_ms": 7314.2,
+        "usage": {
+          "input_tokens": 1102,
+          "output_tokens": 638,
+          "cost_usd": 0.000548,
+          "steps": 6
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": true,
+        "correct": true
+      },
+      {
+        "id": "g-005",
+        "query": "报销款项审批通过后多久发放？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "subject": "employee",
+        "answer": "报销款项在审批通过后 5 个工作日内发放 {e_费用报销管理办法_费用报销管理办法-c4}。",
+        "n_citations": 5,
+        "cited_docs": [
+          "费用报销管理办法",
+          "采购付款管理规定"
+        ],
+        "finish_reason": "answered",
+        "latency_ms": 5870.3,
+        "usage": {
+          "input_tokens": 1700,
+          "output_tokens": 499,
+          "cost_usd": 0.000554,
+          "steps": 6
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": true,
+        "correct": true
+      },
+      {
+        "id": "g-006",
+        "query": "采购预付款最多可以占合同金额的多少？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "subject": "employee",
+        "answer": "预付款原则上不超过合同金额的 30%，超过部分须总经理特批 {e_采购付款管理规定_采购付款管理规定-c3}。",
+        "n_citations": 4,
+        "cited_docs": [
+          "采购付款管理规定"
+        ],
+        "finish_reason": "answered",
+        "latency_ms": 9821.8,
+        "usage": {
+          "input_tokens": 1410,
+          "output_tokens": 976,
+          "cost_usd": 0.000797,
+          "steps": 6
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": true,
+        "correct": true
+      },
+      {
+        "id": "g-007",
+        "query": "薪酬数据哪些人可以查看？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "subject": "payroll",
+        "answer": "根据《薪酬保密制度》，薪酬数据仅薪酬专员与直属上级可见，禁止跨部门传播 {e_薪酬保密制度_薪酬保密制度-c1}。此外，因审计、仲裁、司法调查等法定事由需要调阅薪酬数据的，经人力资源总监批准后方可提供 {e_薪酬保密制度_薪酬保密制度-c3}。",
+        "n_citations": 5,
+        "cited_docs": [
+          "员工考勤管理制度",
+          "薪酬保密制度"
+        ],
+        "finish_reason": "answered",
+        "latency_ms": 7265.9,
+        "usage": {
+          "input_tokens": 1402,
+          "output_tokens": 734,
+          "cost_usd": 0.000651,
+          "steps": 6
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": true,
+        "correct": true
+      },
+      {
+        "id": "g-008",
+        "query": "工作日加班按几倍计算？",
+        "query_type": "single_hop",
+        "dataset": "golden",
+        "subject": "employee",
+        "answer": "工作日加班按 1.5 倍计算 {e_员工考勤管理制度_员工考勤管理制度-c4}。",
+        "n_citations": 3,
+        "cited_docs": [
+          "员工考勤管理制度"
+        ],
+        "finish_reason": "answered",
+        "latency_ms": 7131.9,
+        "usage": {
+          "input_tokens": 1366,
+          "output_tokens": 565,
+          "cost_usd": 0.000544,
+          "steps": 6
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": true,
+        "correct": true
+      },
+      {
+        "id": "g-009",
+        "query": "单笔 6 万元的费用报销需要谁审批？",
+        "query_type": "process",
+        "dataset": "golden",
+        "subject": "employee",
+        "answer": "单笔 6 万元的费用报销已超过 5 万元，须报财务总监审批，并附专项说明{e_费用报销管理办法_费用报销管理办法-c3}。",
+        "n_citations": 5,
+        "cited_docs": [
+          "费用报销管理办法",
+          "采购付款管理规定"
+        ],
+        "finish_reason": "answered",
+        "latency_ms": 9733.9,
+        "usage": {
+          "input_tokens": 1618,
+          "output_tokens": 860,
+          "cost_usd": 0.000759,
+          "steps": 6
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": true,
+        "correct": true
+      },
+      {
+        "id": "g-010",
+        "query": "单笔 8 万元的采购付款由谁审批？",
+        "query_type": "process",
+        "dataset": "golden",
+        "subject": "employee",
+        "answer": "单笔 8 万元属于 10 万元以下的采购付款，由财务负责人审批{e_采购付款管理规定_采购付款管理规定-c3}。",
+        "n_citations": 5,
+        "cited_docs": [
+          "费用报销管理办法",
+          "采购付款管理规定"
+        ],
+        "finish_reason": "answered",
+        "latency_ms": 8808.1,
+        "usage": {
+          "input_tokens": 1626,
+          "output_tokens": 813,
+          "cost_usd": 0.000732,
+          "steps": 6
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": true,
+        "correct": true
+      },
+      {
+        "id": "g-011",
+        "query": "单笔 3 万元的费用报销要走什么审批流程？",
+        "query_type": "process",
+        "dataset": "golden",
+        "subject": "employee",
+        "answer": "单笔 3 万元的费用报销属于“5000 元至 5 万元”的区间，应由部门负责人与财务经理会签审批 {e_费用报销管理办法_费用报销管理办法-c3}。",
+        "n_citations": 7,
+        "cited_docs": [
+          "费用报销管理办法",
+          "采购付款管理规定"
+        ],
+        "finish_reason": "abstained",
+        "latency_ms": 14836.4,
+        "usage": {
+          "input_tokens": 2802,
+          "output_tokens": 1569,
+          "cost_usd": 0.001362,
+          "steps": 9
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": true,
+        "correct": false,
+        "attribute": "E10"
+      },
+      {
+        "id": "g-012",
+        "query": "公司的标准工时是怎么规定的？",
+        "query_type": "process",
+        "dataset": "golden",
+        "subject": "employee",
+        "answer": "公司标准工时为：上午 9:00 至 12:00，下午 13:00 至 18:00，每周工作五天 {e_员工考勤管理制度_员工考勤管理制度-c2}。员工应按时上下班，不得无故迟到、早退、旷工 {e_员工考勤管理制度_员工考勤管理制度-c2}。",
+        "n_citations": 7,
+        "cited_docs": [
+          "员工考勤管理制度",
+          "费用报销管理办法",
+          "采购付款管理规定"
+        ],
+        "finish_reason": "answered",
+        "latency_ms": 6981.6,
+        "usage": {
+          "input_tokens": 1970,
+          "output_tokens": 676,
+          "cost_usd": 0.000701,
+          "steps": 6
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": true,
+        "correct": true
+      },
+      {
+        "id": "g-013",
+        "query": "费用发生超过 30 天才提交报销还能报吗？",
+        "query_type": "process",
+        "dataset": "golden",
+        "subject": "employee",
+        "answer": "可以提交，但逾期需附情况说明 {e_费用报销管理办法_费用报销管理办法-c4}。现有资料未说明逾期报销是否会被批准。",
+        "n_citations": 6,
+        "cited_docs": [
+          "费用报销管理办法",
+          "采购付款管理规定"
+        ],
+        "finish_reason": "abstained",
+        "latency_ms": 14471.0,
+        "usage": {
+          "input_tokens": 2682,
+          "output_tokens": 1481,
+          "cost_usd": 0.001291,
+          "steps": 9
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": true,
+        "correct": false,
+        "attribute": "E10"
+      },
+      {
+        "id": "g-014",
+        "query": "采购付款的申请要在什么时间之前提交？",
+        "query_type": "process",
+        "dataset": "golden",
+        "subject": "employee",
+        "answer": "采购付款须在合同签订后 30 日内提交付款申请 {e_采购付款管理规定_采购付款管理规定-c2}；逾期提交的，需附情况说明 {e_采购付款管理规定_采购付款管理规定-c2}。",
+        "n_citations": 5,
+        "cited_docs": [
+          "费用报销管理办法",
+          "采购付款管理规定"
+        ],
+        "finish_reason": "answered",
+        "latency_ms": 7907.8,
+        "usage": {
+          "input_tokens": 1552,
+          "output_tokens": 788,
+          "cost_usd": 0.000706,
+          "steps": 6
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": true,
+        "correct": true
+      },
+      {
+        "id": "g-015",
+        "query": "加班申请要走什么流程？",
+        "query_type": "process",
+        "dataset": "golden",
+        "subject": "employee",
+        "answer": "",
+        "n_citations": 0,
+        "cited_docs": [],
+        "finish_reason": "abstained",
+        "latency_ms": 15332.6,
+        "usage": {
+          "input_tokens": 2422,
+          "output_tokens": 1569,
+          "cost_usd": 0.001305,
+          "steps": 8
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": false,
+        "correct": false,
+        "attribute": "E10"
+      },
+      {
+        "id": "g-016",
+        "query": "什么情况下可以调阅他人的薪酬数据？",
+        "query_type": "process",
+        "dataset": "golden",
+        "subject": "payroll",
+        "answer": "因审计、仲裁、司法调查等法定事由需要调阅薪酬数据的，经人力资源总监批准后方可提供 {e_薪酬保密制度_薪酬保密制度-c3}。薪酬数据属公司保密信息，通常仅薪酬专员与直属上级可见，禁止跨部门传播 {e_薪酬保密制度_薪酬保密制度-c1}。",
+        "n_citations": 5,
+        "cited_docs": [
+          "薪酬保密制度",
+          "采购付款管理规定"
+        ],
+        "finish_reason": "answered",
+        "latency_ms": 8983.1,
+        "usage": {
+          "input_tokens": 1524,
+          "output_tokens": 967,
+          "cost_usd": 0.000809,
+          "steps": 6
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": true,
+        "correct": true
+      },
+      {
+        "id": "g-017",
+        "query": "报销和采购付款的审批权限分别是怎么划分的？",
+        "query_type": "multi_hop",
+        "dataset": "golden",
+        "subject": "employee",
+        "answer": "**报销审批权限**  \n- 单笔金额 5000 元以下的费用报销，由部门负责人审批。{e_费用报销管理办法_费用报销管理办法-c3}  \n- 单笔金额 5000 元至 5 万元的费用报销，由部门负责人与财务经理会签。{e_费用报销管理办法_费用报销管理办法-c3}  \n- 单笔金额超过 5 万元的费用报销，须报财务总监审批，并附专项说明。{e_费用报销管理办法_费用报销管理办法-c3}  \n**采购付款审批权限**  \n- 单笔付款金额 10 万元以下的，由财务负责人审批。{e_采购付款管理规定_采购付款管理规定-c3}  \n- 单笔付款金额超过 10 万元的，须报总经理审批。{e_采购付款管理规定_采购付款管理规定-c3}  \n- 预付款原则上不超过合同金额的 30%，超过部分须总经理特批。{e_采购付款管理规定_采购付款管理规定-c3}",
+        "n_citations": 8,
+        "cited_docs": [
+          "费用报销管理办法",
+          "采购付款管理规定"
+        ],
+        "finish_reason": "abstained",
+        "latency_ms": 17553.8,
+        "usage": {
+          "input_tokens": 3010,
+          "output_tokens": 2011,
+          "cost_usd": 0.001658,
+          "steps": 9
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": true,
+        "correct": false,
+        "attribute": "E10"
+      },
+      {
+        "id": "g-018",
+        "query": "报销申请和采购付款申请各自要求在多少日内提交？",
+        "query_type": "multi_hop",
+        "dataset": "golden",
+        "subject": "employee",
+        "answer": "报销申请须在费用发生后 30 日内提交 {e_费用报销管理办法_费用报销管理办法-c4}；采购付款申请须在合同签订后 30 日内提交 {e_采购付款管理规定_采购付款管理规定-c2}。",
+        "n_citations": 8,
+        "cited_docs": [
+          "员工考勤管理制度",
+          "费用报销管理办法",
+          "采购付款管理规定"
+        ],
+        "finish_reason": "answered",
+        "latency_ms": 6804.8,
+        "usage": {
+          "input_tokens": 2060,
+          "output_tokens": 643,
+          "cost_usd": 0.000695,
+          "steps": 6
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": true,
+        "correct": true
+      },
+      {
+        "id": "g-019",
+        "query": "单笔 6 万元的费用报销和单笔 12 万元的采购付款，分别由谁审批？",
+        "query_type": "multi_hop",
+        "dataset": "golden",
+        "subject": "employee",
+        "answer": "单笔 6 万元的费用报销属于“单笔金额超过 5 万元”的情形，因此须报财务总监审批，并附专项说明 {e_费用报销管理办法_费用报销管理办法-c3}。单笔 12 万元的采购付款属于“单笔付款金额超过 10 万元”的情形，因此须报总经理审批 {e_采购付款管理规定_采购付款管理规定-c3}。",
+        "n_citations": 8,
+        "cited_docs": [
+          "费用报销管理办法",
+          "采购付款管理规定"
+        ],
+        "finish_reason": "answered",
+        "latency_ms": 8690.7,
+        "usage": {
+          "input_tokens": 2006,
+          "output_tokens": 1020,
+          "cost_usd": 0.000913,
+          "steps": 6
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": true,
+        "correct": true
+      },
+      {
+        "id": "g-020",
+        "query": "请假和加班分别需要谁审批？",
+        "query_type": "multi_hop",
+        "dataset": "golden",
+        "subject": "employee",
+        "answer": "",
+        "n_citations": 0,
+        "cited_docs": [],
+        "finish_reason": "abstained",
+        "latency_ms": 15049.6,
+        "usage": {
+          "input_tokens": 2117,
+          "output_tokens": 1516,
+          "cost_usd": 0.001227,
+          "steps": 8
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": false,
+        "correct": false,
+        "attribute": "E10"
+      },
+      {
+        "id": "g-021",
+        "query": "哪些制度明确适用于实习生？",
+        "query_type": "multi_hop",
+        "dataset": "golden",
+        "subject": "employee",
+        "answer": "明确适用于实习生的制度是《费用报销管理办法》，其适用范围为公司全体正式员工及实习生 {e_费用报销管理办法_费用报销管理办法-c1}。《员工考勤管理制度》只明确适用于公司全体正式员工，未涵盖实习生 {e_员工考勤管理制度_员工考勤管理制度-c1}。",
+        "n_citations": 2,
+        "cited_docs": [
+          "员工考勤管理制度",
+          "费用报销管理办法"
+        ],
+        "finish_reason": "answered",
+        "latency_ms": 10702.0,
+        "usage": {
+          "input_tokens": 1144,
+          "output_tokens": 1024,
+          "cost_usd": 0.000786,
+          "steps": 6
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": true,
+        "correct": true
+      },
+      {
+        "id": "g-022",
+        "query": "薪酬专员在什么条件下可以对外提供他人的薪酬数据？",
+        "query_type": "multi_hop",
+        "dataset": "golden",
+        "subject": "payroll",
+        "answer": "",
+        "n_citations": 0,
+        "cited_docs": [],
+        "finish_reason": "abstained",
+        "latency_ms": 16208.5,
+        "usage": {
+          "input_tokens": 1784,
+          "output_tokens": 1636,
+          "cost_usd": 0.001249,
+          "steps": 8
+        },
+        "graph": null,
+        "degraded": [],
+        "content_ok": false,
+        "correct": false,
+        "attribute": "E10"
+      },
+      {
+        "id": "n-001",
+        "query": "公司年会在什么时候举办？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "subject": "employee",
+        "answer": "",
+        "n_citations": 0,
+        "cited_docs": [],
+        "finish_reason": "abstained",
+        "latency_ms": 5389.4,
+        "usage": {
+          "input_tokens": 557,
+          "output_tokens": 380,
+          "cost_usd": 0.000312,
+          "steps": 8
+        },
+        "graph": null,
+        "degraded": [],
+        "soft_abstain": false,
+        "correct": true
+      },
+      {
+        "id": "n-002",
+        "query": "员工购车有补贴吗？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "subject": "employee",
+        "answer": "",
+        "n_citations": 0,
+        "cited_docs": [],
+        "finish_reason": "abstained",
+        "latency_ms": 10953.4,
+        "usage": {
+          "input_tokens": 1601,
+          "output_tokens": 1070,
+          "cost_usd": 0.000882,
+          "steps": 8
+        },
+        "graph": null,
+        "degraded": [],
+        "soft_abstain": false,
+        "correct": true
+      },
+      {
+        "id": "n-003",
+        "query": "出差可以坐头等舱吗？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "subject": "employee",
+        "answer": "",
+        "n_citations": 0,
+        "cited_docs": [],
+        "finish_reason": "abstained",
+        "latency_ms": 12795.8,
+        "usage": {
+          "input_tokens": 1687,
+          "output_tokens": 1153,
+          "cost_usd": 0.000945,
+          "steps": 8
+        },
+        "graph": null,
+        "degraded": [],
+        "soft_abstain": false,
+        "correct": true
+      },
+      {
+        "id": "n-004",
+        "query": "试用期是几个月？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "subject": "employee",
+        "answer": "",
+        "n_citations": 0,
+        "cited_docs": [],
+        "finish_reason": "abstained",
+        "latency_ms": 10600.0,
+        "usage": {
+          "input_tokens": 1680,
+          "output_tokens": 1036,
+          "cost_usd": 0.000874,
+          "steps": 8
+        },
+        "graph": null,
+        "degraded": [],
+        "soft_abstain": false,
+        "correct": true
+      },
+      {
+        "id": "n-005",
+        "query": "公司股票期权是怎么分配的？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "subject": "employee",
+        "answer": "",
+        "n_citations": 0,
+        "cited_docs": [],
+        "finish_reason": "abstained",
+        "latency_ms": 8326.7,
+        "usage": {
+          "input_tokens": 909,
+          "output_tokens": 685,
+          "cost_usd": 0.000547,
+          "steps": 8
+        },
+        "graph": null,
+        "degraded": [],
+        "soft_abstain": false,
+        "correct": true
+      },
+      {
+        "id": "n-006",
+        "query": "办公用品的单次采购限额是多少？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "subject": "employee",
+        "answer": "",
+        "n_citations": 0,
+        "cited_docs": [],
+        "finish_reason": "abstained",
+        "latency_ms": 12945.6,
+        "usage": {
+          "input_tokens": 1933,
+          "output_tokens": 1423,
+          "cost_usd": 0.001144,
+          "steps": 8
+        },
+        "graph": null,
+        "degraded": [],
+        "soft_abstain": false,
+        "correct": true
+      },
+      {
+        "id": "n-007",
+        "query": "员工结婚有几天婚假？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "subject": "employee",
+        "answer": "",
+        "n_citations": 0,
+        "cited_docs": [],
+        "finish_reason": "abstained",
+        "latency_ms": 10930.5,
+        "usage": {
+          "input_tokens": 1761,
+          "output_tokens": 980,
+          "cost_usd": 0.000852,
+          "steps": 8
+        },
+        "graph": null,
+        "degraded": [],
+        "soft_abstain": false,
+        "correct": true
+      },
+      {
+        "id": "n-008",
+        "query": "离职需要提前多久提出？",
+        "query_type": "no_answer",
+        "dataset": "no_answer",
+        "subject": "employee",
+        "answer": "",
+        "n_citations": 0,
+        "cited_docs": [],
+        "finish_reason": "abstained",
+        "latency_ms": 10714.8,
+        "usage": {
+          "input_tokens": 1543,
+          "output_tokens": 826,
+          "cost_usd": 0.000727,
+          "steps": 8
+        },
+        "graph": null,
+        "degraded": [],
+        "soft_abstain": false,
+        "correct": true
+      },
+      {
+        "id": "u-001",
+        "query": "薪酬专员需要遵守哪些保密要求？",
+        "query_type": "unauthorized",
+        "dataset": "unauthorized",
+        "subject": "outsider",
+        "answer": "",
+        "n_citations": 0,
+        "cited_docs": [],
+        "finish_reason": "abstained",
+        "latency_ms": 8345.1,
+        "usage": {
+          "input_tokens": 919,
+          "output_tokens": 654,
+          "cost_usd": 0.00053,
+          "steps": 8
+        },
+        "graph": null,
+        "degraded": [],
+        "leaked_terms": [],
+        "leaked_docs": [],
+        "leaked": false,
+        "correct": true
+      },
+      {
+        "id": "u-002",
+        "query": "泄露薪酬信息会被怎么处理？",
+        "query_type": "unauthorized",
+        "dataset": "unauthorized",
+        "subject": "outsider",
+        "answer": "",
+        "n_citations": 0,
+        "cited_docs": [],
+        "finish_reason": "abstained",
+        "latency_ms": 11348.8,
+        "usage": {
+          "input_tokens": 1494,
+          "output_tokens": 1040,
+          "cost_usd": 0.000848,
+          "steps": 8
+        },
+        "graph": null,
+        "degraded": [],
+        "leaked_terms": [],
+        "leaked_docs": [],
+        "leaked": false,
+        "correct": true
+      },
+      {
+        "id": "u-003",
+        "query": "什么法定事由可以调阅薪酬数据？",
+        "query_type": "unauthorized",
+        "dataset": "unauthorized",
+        "subject": "outsider",
+        "answer": "",
+        "n_citations": 0,
+        "cited_docs": [],
+        "finish_reason": "abstained",
+        "latency_ms": 11575.1,
+        "usage": {
+          "input_tokens": 1227,
+          "output_tokens": 1099,
+          "cost_usd": 0.000843,
+          "steps": 8
+        },
+        "graph": null,
+        "degraded": [],
+        "leaked_terms": [],
+        "leaked_docs": [],
+        "leaked": false,
+        "correct": true
+      },
+      {
+        "id": "u-004",
+        "query": "薪酬数据哪些人可以查看？",
+        "query_type": "unauthorized",
+        "dataset": "unauthorized",
+        "subject": "outsider",
+        "answer": "",
+        "n_citations": 0,
+        "cited_docs": [],
+        "finish_reason": "abstained",
+        "latency_ms": 10486.5,
+        "usage": {
+          "input_tokens": 1370,
+          "output_tokens": 924,
+          "cost_usd": 0.00076,
+          "steps": 8
+        },
+        "graph": null,
+        "degraded": [],
+        "leaked_terms": [],
+        "leaked_docs": [],
+        "leaked": false,
+        "correct": true
+      },
+      {
+        "id": "u-005",
+        "query": "薪酬专员的保密义务包括哪些？",
+        "query_type": "unauthorized",
+        "dataset": "unauthorized",
+        "subject": "outsider",
+        "answer": "",
+        "n_citations": 0,
+        "cited_docs": [],
+        "finish_reason": "abstained",
+        "latency_ms": 7042.6,
+        "usage": {
+          "input_tokens": 919,
+          "output_tokens": 582,
+          "cost_usd": 0.000487,
+          "steps": 8
+        },
+        "graph": null,
+        "degraded": [],
+        "leaked_terms": [],
+        "leaked_docs": [],
+        "leaked": false,
+        "correct": true
+      },
+      {
+        "id": "u-006",
+        "query": "员工之间可以互相打听工资吗？",
+        "query_type": "unauthorized",
+        "dataset": "unauthorized",
+        "subject": "outsider",
+        "answer": "",
+        "n_citations": 0,
+        "cited_docs": [],
+        "finish_reason": "abstained",
+        "latency_ms": 11183.1,
+        "usage": {
+          "input_tokens": 1215,
+          "output_tokens": 775,
+          "cost_usd": 0.000647,
+          "steps": 8
+        },
+        "graph": null,
+        "degraded": [],
+        "leaked_terms": [],
+        "leaked_docs": [],
+        "leaked": false,
+        "correct": true
+      }
+    ],
+    "summary": {
+      "golden": {
+        "n": 22,
+        "accuracy": 0.7273,
+        "answered_rate": 0.7273,
+        "by_query_type": {
+          "multi_hop": {
+            "n": 6,
+            "accuracy": 0.5
+          },
+          "process": {
+            "n": 8,
+            "accuracy": 0.625
+          },
+          "single_hop": {
+            "n": 8,
+            "accuracy": 1.0
+          }
+        }
+      },
+      "no_answer": {
+        "n": 8,
+        "reject_accuracy": 1.0,
+        "hard_abstain_rate": 1.0,
+        "soft_abstain_rate": 0.0
+      },
+      "unauthorized": {
+        "n": 6,
+        "leak_rate": 0.0,
+        "leaks": []
+      },
+      "latency": {
+        "p50_ms": 9777.8,
+        "p95_ms": 16208.5
+      },
+      "cost": {
+        "total_tokens": 92346,
+        "avg_tokens_per_case": 2565.2,
+        "avg_steps": 7.19
+      },
+      "attribute_counts": {
+        "E10": 6
+      },
+      "degraded_cases": []
+    }
+  }
+}

@@ -300,6 +300,22 @@ def cmd_verify_pg() -> None:
     )
 
 
+def cmd_eval() -> None:
+    """评测跑批：检索层指标 + 端到端对比。参数透传给 eval_run.py。
+
+    例：kw.py eval --mode retrieval
+        KW_LLM_MODE=online kw.py eval --mode e2e --graph graph_pipeline
+    """
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(SERVICE_DIR) + os.pathsep + env.get("PYTHONPATH", "")
+    subprocess.run([sys.executable, str(ROOT / "scripts" / "eval_run.py"), *sys.argv[2:]], env=env, check=False)
+
+
+def cmd_eval_compare() -> None:
+    """把 eval/runs 里的结果汇总成对比表（会按当前判定口径重算）。"""
+    subprocess.run([sys.executable, str(ROOT / "scripts" / "eval_compare.py"), *sys.argv[2:]], check=False)
+
+
 def cmd_java_build() -> None:
     """构建 Java 业务服务（app 模块，含契约 DTO）。"""
     mvn = shutil.which("mvn")
@@ -501,6 +517,8 @@ COMMANDS = {
     "demo": (cmd_demo, "一键演示知识问答（解析→分块→检索→问答，含权限对比，无 Docker 可跑）"),
     "ingest-pg": (cmd_ingest_pg, "把语料灌进 PG（解析→分块→写 write/read 表）"),
     "verify-pg": (cmd_verify_pg, "PG 真库自检（扩展/索引/检索路/鉴权对比，--acl 加权限对比）"),
+    "eval": (cmd_eval, "评测跑批（--mode retrieval/e2e/both，--graph graph|graph_pipeline）"),
+    "eval-compare": (cmd_eval_compare, "汇总 eval/runs 成对比表（按当前判定口径重算）"),
     "java-build": (cmd_java_build, "构建 Java 业务服务（上传/ACL/网关）"),
     "java-test": (cmd_java_test, "跑 Java 单元测试"),
 }

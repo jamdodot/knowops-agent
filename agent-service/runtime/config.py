@@ -125,19 +125,33 @@ def load_pack(pack_dir: Path | str) -> LoadedPack:
     if str(SERVICE_ROOT) not in sys.path:
         sys.path.insert(0, str(SERVICE_ROOT))
 
+    # 一个域允许多张图并存（agentic 与 pipeline 是同一套工具、两套控制流，
+    # 评测时必须能一边跑一边对比）。默认用 domain.yaml 声明的 `graph` 模块；
+    # `KW_GRAPH_MODULE` 可显式换一个（如 graph_pipeline），此时以该模块的 NAME 为准。
+    # 不做成"域名分支"是因为 runtime/ 里不允许出现具体域名（见本文件头注释）。
+    explicit = os.environ.get("KW_GRAPH_MODULE", "").strip()
+    graph_mod_name = explicit or "graph"
+
     try:
-        graph_module = importlib.import_module(f"domains.{pack.name}.graph")
+        graph_module = importlib.import_module(f"domains.{pack.name}.{graph_mod_name}")
     except ImportError as exc:
-        raise PackError(f"无法导入 domains.{pack.name}.graph：{exc}") from exc
+        raise PackError(f"无法导入 domains.{pack.name}.{graph_mod_name}：{exc}") from exc
 
     builder = getattr(graph_module, "build", None)
     if not callable(builder):
-        raise PackError(f"{pack.name}/graph.py 必须暴露 build(rt)")
+        raise PackError(f"{pack.name}/{graph_mod_name}.py 必须暴露 build(rt)")
 
     declared = getattr(graph_module, "NAME", None)
     if declared != pack.graph:
-        # 名字对不上说明 YAML 与代码已漂移；这种错误拖到运行期就是"跑的不是你以为的图"
-        raise PackError(f"{pack.name}: domain.yaml 的 graph={pack.graph!r} 与 graph.py 的 NAME={declared!r} 不一致")
+        if not explicit:
+            # 名字对不上说明 YAML 与代码已漂移；这种错误拖到运行期就是"跑的不是你以为的图"
+            raise PackError(
+                f"{pack.name}: domain.yaml 的 graph={pack.graph!r} 与 "
+                f"{graph_mod_name}.py 的 NAME={declared!r} 不一致"
+            )
+        # 显式换了模块：以模块声明的名字为准，让 pack.graph 始终等于**实际跑的图**，
+        # 否则 trace 与报告里的图名会骗人。
+        pack = pack.model_copy(update={"graph": str(declared)})
 
     tools_module = None
     if (root / "tools.py").is_file():

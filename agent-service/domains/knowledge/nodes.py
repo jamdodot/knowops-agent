@@ -97,6 +97,10 @@ def plan(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
 
 
 def retrieve(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
+    # 新一轮检索的结果排在前面，**上一轮的证据补在后面而不是丢掉**。
+    # 早先这里是整体覆盖：grade 判不足 → rewrite → 覆盖 → 上一轮那条正确证据没了，
+    # 模型却还记得它的 eid，于是引用校验失败、正确答案被判"无票作答"降级成拒答。
+    # 换查询是为了补证据，不是为了抹掉已有证据。
     merged: dict[str, dict[str, Any]] = {}
     for question in (state.get("sub_questions") or [state["query"]])[:3]:
         result = rt.tool("hybrid_retrieve", query=question, top_k=5)
@@ -105,7 +109,14 @@ def retrieve(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
             continue
         for row in result.data or []:
             merged.setdefault(row["chunk_id"], row)
+    for row in state.get("evidence") or []:
+        merged.setdefault(row["chunk_id"], row)
     return {"evidence": list(merged.values())[:8]}
+
+
+# 三档判定 → 分数。阈值（domain.yaml 的 stop.evidence_threshold=0.75）只把
+# sufficient 放过，partial 与 insufficient 都进改写/拒答路径。
+_VERDICT_SCORE = {"sufficient": 1.0, "partial": 0.5, "insufficient": 0.0}
 
 
 def grade_evidence(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
@@ -116,11 +127,22 @@ def grade_evidence(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
     raw = rt.llm_call(
         "knowledge.grade_evidence", query=state["query"], evidence=_fmt_evidence(rows)
     )
-    try:
-        score = float(_json_obj(raw).get("sufficiency", 0.0))
-    except (TypeError, ValueError):
-        score = 0.0
-    return {"sufficiency": max(0.0, min(1.0, score)), "rounds": rounds}
+    data = _json_obj(raw)
+    verdict = str(data.get("verdict") or "").strip().lower()
+    if verdict in _VERDICT_SCORE:
+        score = _VERDICT_SCORE[verdict]
+    else:
+        # 兼容旧格式（sufficiency 小数）：模型没按新契约输出时不至于整轮判 0
+        try:
+            score = float(data.get("sufficiency", 0.0))
+        except (TypeError, ValueError):
+            score = 0.0
+    return {
+        "sufficiency": max(0.0, min(1.0, score)),
+        "rounds": rounds,
+        "grade_verdict": verdict or None,
+        "grade_missing": str(data.get("missing") or "")[:200],
+    }
 
 
 def rewrite_query(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:

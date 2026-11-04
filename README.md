@@ -216,13 +216,20 @@ python scripts/kw.py verify-pg --acl
 python scripts/kw.py demo
 KW_LLM_MODE=online python scripts/kw.py demo
 
+# 5.1) 评测跑批（检索层指标 + 管线式/Agentic 对比）
+python scripts/kw.py eval --mode retrieval                       # 只测检索层，不调模型
+KW_LLM_MODE=online python scripts/kw.py eval --mode e2e --graph graph_pipeline
+KW_LLM_MODE=online python scripts/kw.py eval --mode e2e --graph graph
+python scripts/kw.py eval-compare --tags b0,b1,b2                 # 汇总成对比表（会重算判定）
+# 基线报告见 eval/report-m1-baseline.md
+
 # 6) 契约 → 双端类型（不需要数据库、不需要 docker）
 python scripts/kw.py codegen
 
 # 7) 自检：openapi 引用 + operationId + SQL 语法 + pydantic 的 extra="forbid" + prompt 指纹 + 抽象隔离
 python scripts/kw.py verify
 
-# 8) 单元测试（91 条：契约 / 事件顺序 / 任务恢复 / 抽象隔离 / 预算硬停 / 解析 / 分块 / 检索）
+# 8) 单元测试（106 条：契约 / 事件顺序 / 任务恢复 / 抽象隔离 / 预算硬停 / 解析 / 分块 / 检索 / 评测判定）
 python scripts/kw.py test
 
 # 9) M0 端到端验收（双域假链路 + span 树关联，18 项断言）
