@@ -24,6 +24,10 @@ NAME = "fulfillment_diagnosis"
 class State(TypedDict, total=False):
     symptom: str
     symptom_norm: str
+    #: A2A 委派时为 True：只出诊断结论，不提议动作、不进审批。
+    #: 放在 State 里而不是域配置里，是因为同一个域要同时支持两种入口，
+    #: 而"要不要走审批"取决于**这次请求的用途**，不是域的能力。
+    diagnose_only: bool
     fields: dict[str, Any]
     refines: int
     hypotheses: list[dict[str, Any]]
@@ -69,7 +73,11 @@ def build(rt: Runtime):
     return g
 
 
-def _refine(state: State) -> dict[str, Any]:
+def _refine(state: State, rt: Runtime) -> dict[str, Any]:
+    # 必须收 rt：图内核统一按 fn(state, rt) 调用。
+    # 少收一个参数的后果不是"编译报错"，而是**第一次跑到改写路径才炸**——
+    # 之前所有用例都在第一轮就收敛了，所以这个签名错误一直没暴露。
+    # 2026-11-05 接真实业务库后，判证首次出现 confidence=0，才踩到这条路径。
     return {"refines": int(state.get("refines") or 0) + 1}
 
 
@@ -98,6 +106,9 @@ def _after_evaluate(rt: Runtime):
 
 
 def _after_propose(state: State) -> str:
+    # 仅诊断模式不回审批节点：委派方没有审批界面，让它停在审批等于永远不返回
+    if state.get("diagnose_only"):
+        return "end"
     return "end" if state.get("finish_reason") in ("escalated", "abstained") else "approve"
 
 

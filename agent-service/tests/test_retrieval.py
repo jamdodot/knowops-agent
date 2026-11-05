@@ -21,6 +21,17 @@ class _Subj:
         self.approval_doc_ids = approval_doc_ids or []
 
 
+def _retriever() -> MemoryRetriever:
+    """显式关掉 dense 路。
+
+    这个文件测的是 BM25 相关性排序与 ACL 下推，dense 开不开都不该改变结论。
+    但 `MemoryRetriever()` 会在传 None 时读 SILICONFLOW_API_KEY——同进程里只要
+    有别的用例加载过 .env（比如起 app 的那些），这里就静默切到混合检索，
+    断言随执行顺序飘。测试不可以依赖"先跑谁"。
+    """
+    return MemoryRetriever(embed_api_key="")
+
+
 def _seed(r: MemoryRetriever) -> None:
     r.ingest(
         "doc_a",
@@ -56,7 +67,7 @@ def test_tokenize_cn_query():
 
 
 def test_permission_blocks_unauthorized():
-    r = MemoryRetriever()
+    r = _retriever()
     _seed(r)
     subj = _Subj(dept_paths=["D10"])  # 无权看 D10.9
     evs = r.hybrid_retrieve("薪酬数据谁能看", subj, top_k=5)
@@ -65,7 +76,7 @@ def test_permission_blocks_unauthorized():
 
 
 def test_permission_allows_authorized():
-    r = MemoryRetriever()
+    r = _retriever()
     _seed(r)
     subj = _Subj(dept_paths=["D10.9"])
     evs = r.hybrid_retrieve("薪酬数据谁能看", subj, top_k=5)
@@ -73,7 +84,7 @@ def test_permission_allows_authorized():
 
 
 def test_public_visible_to_all():
-    r = MemoryRetriever()
+    r = _retriever()
     _seed(r)
     subj = _Subj(dept_paths=["D99"])  # 无关部门
     evs = r.hybrid_retrieve("工作时间", subj, top_k=5)
@@ -81,7 +92,7 @@ def test_public_visible_to_all():
 
 
 def test_bm25_relevance_ordering():
-    r = MemoryRetriever()
+    r = _retriever()
     _seed(r)
     subj = _Subj(dept_paths=["D10"])
     evs = r.hybrid_retrieve("超过5万元报销谁审批", subj, top_k=5)
@@ -91,13 +102,13 @@ def test_bm25_relevance_ordering():
 
 
 def test_no_subject_returns_empty():
-    r = MemoryRetriever()
+    r = _retriever()
     _seed(r)
     assert r.hybrid_retrieve("报销", None, top_k=5) == []
 
 
 def test_doc_fetch_permission():
-    r = MemoryRetriever()
+    r = _retriever()
     _seed(r)
     subj = _Subj(dept_paths=["D10"])
     ok = r.doc_fetch("doc_a", subj)
@@ -107,6 +118,6 @@ def test_doc_fetch_permission():
 
 
 def test_ingest_and_index_size():
-    r = MemoryRetriever()
+    r = _retriever()
     _seed(r)
     assert r.index_size() == 4

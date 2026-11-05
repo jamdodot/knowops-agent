@@ -84,6 +84,83 @@ def test_task_pause_and_resume():
     assert c.get(f"/v1/fulfillment/tasks/{task_id}").json()["state"] == "completed"
 
 
+def test_task_rejected_escalates_not_reexplains():
+    """驳回必须转人工，不能"重写报告再给一遍"。
+
+    证据没变的情况下重写只是换个说法，没有信息增益——而且会让用户觉得
+    "我不批它就一直换措辞劝我"，这是审批链路的信任问题，不是文案问题。
+    """
+    app = create_fulfillment_app(Settings(llm_mode="mock", trace_export="memory"))
+    c = TestClient(app)
+
+    r = c.post(
+        "/v1/fulfillment/tasks",
+        json={"symptom": "订单 O20261102001 物流三天没更新", "subject_ctx": _subject(), "session_id": "s_10"},
+    )
+    frames = [f for f in r.text.split("\n\n") if f.strip()]
+    ir = _payload(next(f for f in frames if _frame_event(f) == "input_required"))
+    task_id, approval_id = ir["task_id"], ir["approval"]["approval_id"]
+
+    res = c.post(
+        f"/v1/fulfillment/tasks/{task_id}/resume",
+        json={
+            "task_id": task_id,
+            "subject_ctx": _subject(),
+            "approval": {"approval_id": approval_id, "decision": "rejected", "comment": "先别重推，联系客户"},
+        },
+    )
+    res_events = [_frame_event(f) for f in res.text.split("\n\n") if f.strip()]
+    assert "done" in res_events
+    done = _payload(next(f for f in res.text.split("\n\n") if _frame_event(f) == "done"))
+    assert done["finish_reason"] == "escalated"
+
+    got = c.get(f"/v1/fulfillment/tasks/{task_id}").json()
+    assert got["state"] == "completed"
+    # 驳回不能重开一轮诊断：状态必须是 completed，pending 必须清掉
+    assert got.get("pending") is None
+
+
+def test_resume_does_not_replay_llm_calls():
+    """恢复时不得重复调模型。
+
+    这条是 interrupt 节点"必须幂等"的直接验证：LangGraph resume 会**从头重放**
+    被中断的节点。如果 interrupt 和 LLM 调用写在同一个节点里，每次审批恢复
+    都要多花一次模型调用，而且结论可能变——同一个任务点两次"批准"，拿到两份
+    不一样的诊断，这在排障场景里是致命的。
+    """
+    app = create_fulfillment_app(Settings(llm_mode="mock", trace_export="memory"))
+    c = TestClient(app)
+    rt = app.state.runtime
+
+    calls: list[str] = []
+    original = rt.llm_call
+
+    def counting(role: str, *args, **kwargs):
+        calls.append(role)
+        return original(role, *args, **kwargs)
+
+    rt.llm_call = counting  # type: ignore[method-assign]
+
+    r = c.post(
+        "/v1/fulfillment/tasks",
+        json={"symptom": "订单 O20261102001 物流三天没更新", "subject_ctx": _subject(), "session_id": "s_11"},
+    )
+    frames = [f for f in r.text.split("\n\n") if f.strip()]
+    ir = _payload(next(f for f in frames if _frame_event(f) == "input_required"))
+    before = list(calls)
+    assert before, "诊断阶段应当调过模型，否则这条测试没有意义"
+
+    c.post(
+        f"/v1/fulfillment/tasks/{ir['task_id']}/resume",
+        json={
+            "task_id": ir["task_id"],
+            "subject_ctx": _subject(),
+            "approval": {"approval_id": ir["approval"]["approval_id"], "decision": "approved"},
+        },
+    )
+    assert calls == before, f"恢复阶段不该再调模型，实际新增：{calls[len(before):]}"
+
+
 def test_knowledge_answer_sse():
     app = create_knowledge_app(Settings(llm_mode="mock", trace_export="memory"))
     c = TestClient(app)

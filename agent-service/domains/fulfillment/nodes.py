@@ -15,7 +15,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from typing import Any
+from typing import Any, Callable
 
 from langgraph.types import interrupt
 
@@ -103,33 +103,83 @@ def build_hypotheses(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
     return {"hypotheses": kept, "symptom_norm": symptom, "refines": int(state.get("refines") or 0)}
 
 
+#: 工具名 → 调用。参数统一是订单号，只有规则查询例外。
+#:
+#: 这里同时收中文别名，是因为模型即使被要求"原样照抄工具名"，实测仍有约
+#: 一成的概率写成"查订单""搜日志"。不兜底的表现是**取证全空**——而空证据
+#: 不会报错，只会让 evaluate 把所有假设判成 irrelevant，最后整单转人工。
+#: 那种故障看起来像"模型不会排障"，实际是名字没对上。
+_CHECKS: dict[str, Callable[..., Any]] = {
+    "lookup_order": lambda rt, oid: rt.tool("lookup_order", order_id=oid),
+    "inventory_snapshot": lambda rt, oid: rt.tool("inventory_snapshot", order_id=oid),
+    "shipment_track": lambda rt, oid: rt.tool("shipment_track", order_id=oid),
+    "payment_flow": lambda rt, oid: rt.tool("payment_flow", order_id=oid),
+    "search_op_logs": lambda rt, oid: rt.tool("search_op_logs", order_id=oid),
+    "check_rule": lambda rt, oid: rt.tool("check_rule", rule_id="compensation_v2"),
+}
+
+_CHECKS_ALIAS: dict[str, str] = {
+    "订单": "lookup_order", "查订单": "lookup_order", "订单查询": "lookup_order",
+    "库存": "inventory_snapshot", "查库存": "inventory_snapshot", "库存快照": "inventory_snapshot",
+    "物流": "shipment_track", "轨迹": "shipment_track", "物流轨迹": "shipment_track",
+    "支付": "payment_flow", "流水": "payment_flow", "支付流水": "payment_flow",
+    "日志": "search_op_logs", "搜日志": "search_op_logs", "操作日志": "search_op_logs",
+    "规则": "check_rule", "查规则": "check_rule", "规则库": "check_rule",
+}
+
+
+def _resolve_check(raw: str) -> str:
+    name = str(raw or "").strip()
+    if name in _CHECKS:
+        return name
+    lowered = name.lower().replace("-", "_")
+    if lowered in _CHECKS:
+        return lowered
+    return _CHECKS_ALIAS.get(name, "")
+
+
 def gather_evidence(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
     fields = state.get("fields") or {}
     order_id = fields.get("order_id")
     collected: dict[str, list[dict[str, Any]]] = {}
+    unknown: list[str] = []
+
+    # 订单级基线证据：操作日志是**横切**的——滞留告警、地址校验失败、重复扣减
+    # 都写在这里，不属于某一个假设。让模型自己决定"要不要查日志"的结果是：
+    # 它在"承运商滞留"假设下只查了轨迹，看不到那条 STUCK_ALERT，于是把正确假设
+    # 判成 irrelevant（实测第一单就是这么错的）。
+    # 所以日志由节点兜底拉一次，谁没查谁用这份。
+    baseline = rt.tool("search_op_logs", order_id=order_id)
 
     for hypothesis in (state.get("hypotheses") or [])[: rt.pack.stop.max_hypotheses or 4]:
         rows: list[dict[str, Any]] = []
-        for check in hypothesis.get("checks") or []:
-            if check == "lookup_order":
-                result = rt.tool("lookup_order", order_id=order_id)
-            elif check == "search_logs":
-                result = rt.tool("search_logs", keyword="分拨中心")
-            elif check == "query_metric":
-                result = rt.tool("query_metric", metric="inventory_diff_rate")
-            elif check == "check_rule":
-                result = rt.tool("check_rule", rule_id="compensation_v2")
-            else:
+        resolved: list[str] = []
+        for raw in hypothesis.get("checks") or []:
+            name = _resolve_check(raw)
+            fn = _CHECKS.get(name)
+            if fn is None:
+                unknown.append(str(raw))
                 continue
+            result = fn(rt, order_id)
+            resolved.append(name)
             rows.append(
                 {
-                    "tool": check,
+                    "tool": name,
                     "ok": result.ok,
                     "summary": result.summary or (result.error or ""),
                 }
             )
+        if "search_op_logs" not in resolved and baseline.ok:
+            rows.insert(0, {"tool": "search_op_logs", "ok": True,
+                            "summary": baseline.summary, "note": "订单级基线证据（节点兜底拉取）"})
         collected[str(hypothesis["id"])] = rows
-    rt.progress(note=f"按假设取证完成：{sum(len(v) for v in collected.values())} 次工具调用")
+
+    note = f"按假设取证完成：{sum(len(v) for v in collected.values())} 条证据"
+    if unknown:
+        # 把无法识别的 check 打进进度，而不是静默丢弃：取证缺失会让诊断结论
+        # 看起来像"证据不足"，但真正的原因是模型给了个不存在的工具名。
+        note += f"；无法识别的 check={sorted(set(unknown))}"
+    rt.progress(note=note)
     return {"evidence_map": collected}
 
 
@@ -201,6 +251,12 @@ def compose_diagnosis(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
 
 
 def propose_action(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
+    # A2A 委派只要根因，不要动作。说清理由：上游（知识域）没有审批界面，
+    # 让它去批一个下游的写动作，等于把审批责任转移给一个无法承担它的调用方。
+    if state.get("diagnose_only"):
+        rt.progress(note="仅诊断模式（A2A 委派）：跳过动作提议与审批")
+        return {"finish_reason": "answered", "stop_reason": "diagnose_only"}
+
     action_type = "retry_push_carrier"
     allowed, reason = rt.guard.action_verdict(action_type)
     if not allowed:

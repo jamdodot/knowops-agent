@@ -229,7 +229,12 @@ def _compress(data: Any) -> tuple[str, int, bool]:
         return _truncate(text), rows, compressed
 
     if isinstance(data, dict):
-        text = json.dumps(data, ensure_ascii=False, indent=None)
+        # default=str 是兜底，不是设计：工具本应返回可 JSON 化的数据。
+        # 但"本应"挡不住真实情况——接了业务库之后，datetime 和 Decimal 会从
+        # psycopg 里直接漏出来，而这里的 json.dumps 会当场抛 TypeError，
+        # 表现是"工具调用失败"，查半天才发现是时间对象没转。
+        # 兜底之后最坏是时间格式不好看，而不是整条诊断链断在取证。
+        text = json.dumps(data, ensure_ascii=False, indent=None, default=str)
         return _truncate(text), 1, len(text) > _COMPRESS_AT
 
     text = str(data)
@@ -237,7 +242,7 @@ def _compress(data: Any) -> tuple[str, int, bool]:
 
 
 def _short(v: Any) -> str:
-    s = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False)
+    s = v if isinstance(v, str) else json.dumps(v, ensure_ascii=False, default=str)
     return s if len(s) <= 60 else s[:57] + "…"
 
 

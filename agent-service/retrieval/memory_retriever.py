@@ -87,8 +87,12 @@ class MemoryRetriever:
         self._lengths: dict[str, int] = {}
         self._avg_len = 0.0
         self._n_chunks = 0
-        # 可选 dense
-        self._embed_key = embed_api_key or os.environ.get("SILICONFLOW_API_KEY", "")
+        # 可选 dense。
+        # `is None` 而不是 `or`：显式传 "" 应当被理解为"明确不要向量路"，
+        # 而不是"没传，去读环境变量"。原来的 `or` 让"关闭"变成不可能——
+        # 单测里只要同进程有别的用例加载过 .env，这里就静默切到混合检索，
+        # 断言随执行顺序飘（2026-11-05 加了 test_a2a 之后暴露）。
+        self._embed_key = os.environ.get("SILICONFLOW_API_KEY", "") if embed_api_key is None else embed_api_key
         self._embed_base = (embed_base or "https://api.siliconflow.cn/v1").rstrip("/")
         self._embed_model = embed_model or os.environ.get("EMBED_MODEL", "BAAI/bge-m3")
         self._vectors: dict[str, list[float]] = {}
