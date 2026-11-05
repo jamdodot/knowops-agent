@@ -60,6 +60,54 @@ class LLMProvider(Protocol):
     def chat(self, role: str, prompt: Rendered, *, max_tokens: int | None = None) -> LLMResult: ...
 
 
+def _apply_role_overrides(roles: dict[str, RoleCfg]) -> dict[str, RoleCfg]:
+    """用环境变量临时改「某个角色走哪个模型」。
+
+        KW_ROLE_OVERRIDE="generate=siliconflow/Qwen/Qwen2.5-72B-Instruct,classify=siliconflow/Qwen/Qwen3-8B"
+        KW_ROLE_TIMEOUT_S="90"     # 可选，统一放大超时
+
+    为什么用环境变量而不是直接改 models.yaml：
+    换模型是**一次评测的临时决策**。写进 yaml 之后，"默认用哪个模型"这件事
+    就不可追了——下次有人看仓库会以为硅基流动才是默认。环境变量的作用域
+    只活在这一条命令里，跑完即弃，yaml 仍然是决策记录。
+
+    只覆盖 provider 与 model，temperature / max_tokens 保持原角色：
+    那些参数是针对任务形状调的（比如 classify 必须 1024 才不会把思考链截断），
+    跟着模型一起换等于把踩过的坑重踩一遍。
+
+    格式只支持 `<role>=<provider>/<model>`，provider 与 model 之间用**第一个**
+    斜杠切——model id 本身带斜杠（Qwen/Qwen2.5-72B-Instruct）是常态。
+    """
+    raw = (os.environ.get("KW_ROLE_OVERRIDE") or "").strip()
+    timeout_raw = (os.environ.get("KW_ROLE_TIMEOUT_S") or "").strip()
+    timeout = float(timeout_raw) if timeout_raw else None
+    if not raw and timeout is None:
+        return roles
+
+    out = dict(roles)
+    for item in filter(None, (s.strip() for s in raw.split(","))):
+        role, _, spec = item.partition("=")
+        role, spec = role.strip(), spec.strip()
+        provider, _, model = spec.partition("/")
+        if not role or not provider or not model:
+            raise KwError(Code.INTERNAL, f"KW_ROLE_OVERRIDE 条目格式不对：{item!r}，应为 role=provider/model")
+        if role not in out:
+            # 拼错角色名不报错的话，你会以为切换生效了、实际还在跑老模型，
+            # 然后拿两批不同模型的结果做对比。这比直接崩掉危险得多。
+            raise KwError(Code.INTERNAL, f"KW_ROLE_OVERRIDE 引用了不存在的角色：{role}")
+        old = out[role]
+        out[role] = RoleCfg(
+            provider=provider,
+            model=model,
+            temperature=old.temperature,
+            max_tokens=old.max_tokens,
+            timeout_s=timeout or old.timeout_s,
+        )
+    if timeout is not None:
+        out = {k: RoleCfg(v.provider, v.model, v.temperature, v.max_tokens, timeout) for k, v in out.items()}
+    return out
+
+
 class ModelConfig:
     """`config/models.yaml` 的只读视图。"""
 
@@ -92,6 +140,7 @@ class ModelConfig:
             for name, cfg in (doc.get("roles") or {}).items()
             if "provider" in cfg and "model" in cfg
         }
+        roles = _apply_role_overrides(roles)
         prices = doc.get("cost_ref") or {}
         return cls(roles=roles, providers=providers, prices=prices)
 
