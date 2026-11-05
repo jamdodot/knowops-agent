@@ -14,6 +14,7 @@ M1 落 `task` 表 + TTL 清理，语义不变。
 
 from __future__ import annotations
 
+import os
 import sys
 import traceback
 import uuid
@@ -21,6 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
 SERVICE_ROOT = Path(__file__).resolve().parent.parent
@@ -107,6 +109,28 @@ def create_app(settings: Settings | None = None, *, domain_dir: Path | None = No
     store = TaskStore()
 
     app = FastAPI(title=f"KnowOps {rt.pack.name}", version=settings.service_version)
+
+    # 演示页（web/）由知识域 :8001 挂 StaticFiles，但排障域是**独立进程** :8002。
+    # 两个选择：① 知识域代理 /v1/fulfillment/*；② 排障域放行跨域。
+    # 选 ②：代理等于把排障域的写操作 API 伪装成知识域的能力，"域边界即服务边界"
+    # 这句话就当场失效了；而演示页只是个前端壳，跨域访问两个后端才是真实形态。
+    #
+    # 白名单必须显式给，不用 "*"：这个服务能触发审批与动作，放通配符是把
+    # 本地演示的便利带进生产。
+    demo_origins = [
+        o.strip()
+        for o in (os.environ.get("KW_DEMO_ORIGINS") or "").split(",")
+        if o.strip()
+    ] or ["http://localhost:8001", "http://127.0.0.1:8001"]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=demo_origins,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        # X-Contract-Version 是自定义头，不列出来预检就会被拒
+        allow_headers=["Content-Type", "X-Contract-Version"],
+        expose_headers=["X-Degraded"],
+        max_age=600,
+    )
     app.state.runtime = rt
     app.state.graph = graph
     app.state.tasks = store

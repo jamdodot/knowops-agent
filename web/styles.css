@@ -393,6 +393,98 @@ sup.eid:hover { background: var(--accent); color: #fff; }
 .notice.danger { border-color: var(--danger-border); background: var(--danger-soft); color: var(--danger); }
 .notice[hidden] { display: none; }
 
+/* ---------------------------------------------------------------- 排障 */
+/* 这一页要同时表达"过程"和"结论"，所以左右分栏：左边是节点与证据判定，
+   右边是根因、以及需要人拍板的那张审批卡。把审批塞进时间线里会让人漏看。 */
+.ops-svc {
+  display: flex; align-items: center; gap: 7px;
+  padding: 6px 10px;
+  border: 1px solid var(--border); border-radius: 7px;
+  font-size: 11px; color: var(--muted); font-family: var(--mono); white-space: nowrap;
+}
+.ops-svc .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); }
+.ops-svc.is-ok .dot { background: var(--accent); }
+.ops-svc.is-bad { color: var(--danger); border-color: var(--danger-border); }
+.ops-svc.is-bad .dot { background: var(--danger); }
+
+.ops-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+  gap: 14px; align-items: start;
+}
+.ops-flow-panel, .ops-result-panel { display: flex; flex-direction: column; }
+
+/* min-height 是给空状态用的：只显示一行提示时面板会扁成一条，
+   看起来不像"这里会发生事"。给个下限，但不给到 340px 那种程度——
+   上一版 answer-panel 就是被固定高度撑出了大片空白。 */
+.ops-timeline { padding: 10px 14px; min-height: 240px; max-height: 470px; overflow-y: auto; }
+.ops-sec { margin: 12px 0 6px; font-size: 11px; color: var(--faint); }
+.ops-sec:first-child { margin-top: 2px; }
+
+.ops-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.ops-step {
+  display: grid; grid-template-columns: 18px auto 1fr;
+  align-items: baseline; gap: 8px;
+  padding: 5px 0; font-size: 12px;
+  border-bottom: 1px dashed var(--border);
+}
+.ops-idx { font-family: var(--mono); font-size: 10px; color: var(--faint); text-align: right; }
+.ops-node { color: var(--text); white-space: nowrap; }
+.ops-note { color: var(--muted); font-size: 11.5px; word-break: break-word; }
+
+.ops-evid-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ops-evid { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; font-size: 12px; }
+.ops-verdict {
+  font-size: 10.5px; padding: 1px 6px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--muted); white-space: nowrap;
+}
+.ops-verdict.ok { color: var(--accent); background: var(--accent-soft); border-color: var(--accent-border); }
+.ops-verdict.bad { color: var(--danger); background: var(--danger-soft); border-color: var(--danger-border); }
+.ops-verdict.mute { opacity: .7; }
+.ops-hyp { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+
+/* 审批卡：这是整页唯一"停下来等人"的地方，底色单独给，别和时间线混在一起 */
+.ops-approval {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--warn-border);
+  background: var(--warn-soft);
+}
+.ops-approval[hidden] { display: none; }
+.ops-ask-title { margin-bottom: 6px; font-size: 12px; font-weight: 500; color: var(--warn); }
+.ops-ask-q { margin-bottom: 8px; font-size: 12.5px; color: var(--text); }
+.ops-action { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.ops-action code {
+  padding: 2px 6px; border: 1px solid var(--border); border-radius: 5px;
+  background: var(--panel); font-family: var(--mono); font-size: 12px; color: var(--text);
+}
+.ops-risk {
+  font-size: 10.5px; padding: 1px 6px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--muted);
+}
+.ops-risk.ok { color: var(--accent); border-color: var(--accent-border); background: var(--accent-soft); }
+.ops-risk.warn { color: var(--warn); border-color: var(--warn-border); }
+.ops-risk.bad { color: var(--danger); border-color: var(--danger-border); background: var(--danger-soft); }
+.ops-params {
+  margin: 0 0 8px; padding: 8px; max-height: 140px; overflow: auto;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--panel);
+  font-family: var(--mono); font-size: 11px; color: var(--muted);
+  white-space: pre-wrap; word-break: break-word;
+}
+.ops-approval input { width: 100%; margin-bottom: 8px; }
+.ops-ask-btns { display: flex; gap: 8px; }
+.ops-field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; font-size: 11.5px; color: var(--muted); }
+
+.ops-result { flex: 1; padding: 14px; min-height: 200px; }
+.ops-root { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.ops-root-label { font-size: 11px; color: var(--faint); }
+.ops-root-name { font-size: 19px; font-weight: 500; color: var(--accent); letter-spacing: -.01em; }
+/* 原始值另起一行：中文是给人看的，英文是给日志搜的，两个都要留 */
+.ops-root-raw { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+.ops-summary { font-size: 12.5px; line-height: 1.65; color: var(--muted); }
+.ops-summary p { margin: 0 0 8px; }
+.ops-summary p:last-child { margin-bottom: 0; }
+.ops-result-panel .notice { margin: 0 14px 14px; }
+
 /* ---------------------------------------------------------------- 对比 */
 .cmp-form { display: flex; gap: 8px; margin-bottom: 16px; }
 .cmp-form input { flex: 1; min-width: 0; }
@@ -545,5 +637,5 @@ td.mono { font-family: var(--mono); font-size: 11px; color: var(--muted); }
   .nav { flex-direction: row; }
   .rail-foot { margin-left: auto; }
   .main { padding: 20px 16px 40px; }
-  .answer-grid, .cmp-grid { grid-template-columns: 1fr; }
+  .answer-grid, .cmp-grid, .ops-grid { grid-template-columns: 1fr; }
 }

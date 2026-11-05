@@ -6,6 +6,11 @@ const CONTRACT = '1.0.0';
 const API_RUNS = '/v1/eval/runs';
 const API_ANSWERS = '/v1/knowledge/answers';
 
+// 排障域是**另一个进程**（:8002），所以这里是绝对地址而不是同源路径。
+// 跟着 location.hostname 走，避免"页面在 localhost、接口写 127.0.0.1"时
+// 被 CORS 当成两个 origin 拒掉。
+const API_OPS = `http://${location.hostname || 'localhost'}:8002`;
+
 //: 演示用身份。生产里 subject_ctx 由 Java 网关按登录态注入，前端拿不到也不该拼。
 const PERSONAS = {
   employee: {
@@ -93,20 +98,10 @@ function renderText(raw, eidIndex, streaming) {
 // ---------------------------------------------------------------- SSE
 // 用 fetch 而不是 EventSource：EventSource 只支持 GET，而问答是 POST + JSON body。
 // SSE 帧格式在这里手解：空行分帧，`:` 开头是心跳注释，data 一定是 JSON。
-async function streamAnswer({ query, subject, graph, onEvent, signal }) {
-  const resp = await fetch(API_ANSWERS, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Contract-Version': CONTRACT },
-    body: JSON.stringify({
-      query,
-      subject_ctx: subject,
-      session_id: sid(),
-      turn_seq: 1,
-      ...(graph ? { graph } : {}),
-    }),
-    signal,
-  });
-
+//
+// 抽成通用函数是因为排障域也要用同一套解析：两处各写一遍，
+// 迟早出现"一处支持多行 data、另一处不支持"的偏差。
+async function consumeSSE(resp, onEvent) {
   if (!resp.ok) {
     let msg = `HTTP ${resp.status}`;
     try {
@@ -148,6 +143,22 @@ async function streamAnswer({ query, subject, graph, onEvent, signal }) {
   if (buffer.trim()) dispatch(buffer);
 }
 
+async function streamAnswer({ query, subject, graph, onEvent, signal }) {
+  const resp = await fetch(API_ANSWERS, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Contract-Version': CONTRACT },
+    body: JSON.stringify({
+      query,
+      subject_ctx: subject,
+      session_id: sid(),
+      turn_seq: 1,
+      ...(graph ? { graph } : {}),
+    }),
+    signal,
+  });
+  await consumeSSE(resp, onEvent);
+}
+
 // ---------------------------------------------------------------- 视图切换
 function initNav() {
   $$('.nav-item').forEach((btn) => {
@@ -155,6 +166,8 @@ function initNav() {
       $$('.nav-item').forEach((b) => b.classList.toggle('is-active', b === btn));
       $$('.view').forEach((v) => { v.hidden = v.id !== `view-${btn.dataset.view}`; });
       if (btn.dataset.view === 'eval') loadEvalRuns();
+      // 排障域可能在打开页面之后才起，每次进这一页都重探一次
+      if (btn.dataset.view === 'ops') checkOpsHealth();
     });
   });
 }
@@ -811,9 +824,465 @@ function initEval() {
   $('#run-reload').addEventListener('click', () => { evalLoaded = false; loadEvalRuns(true); });
 }
 
+// ---------------------------------------------------------------- 订单排障
+// 这一块和知识问答的本质差别只有一句：**断流 ≠ 任务失败**。
+// 写动作之前要人工审批，审批可能等很久，HTTP 长连接撑不住，所以流会正常关闭、
+// 任务停在 input_required，恢复是**新的一条流**（POST .../resume）。
+// 界面上必须把这件事说出来，否则"流断了"会被当成"跑挂了"。
+
+const NODE_LABEL = {
+  analyze_symptom: '分析症状',
+  clarify: '追问补充信息',
+  build_hypotheses: '生成假设',
+  gather_evidence: '逐条取证',
+  evaluate: '评估假设',
+  refine: '调整假设',
+  compose_diagnosis: '汇总结论',
+  propose_action: '提议动作',
+  human_approve: '等待人工审批',
+  escalate: '转人工',
+};
+
+//: verdict 只决定颜色，不改变文案：support/refute/irrelevant 是判定口径，
+//: 翻成"支持/否证/无关"已经是原意，再润色就会失真。
+const VERDICT_LABEL = {
+  support: ['支持', 'ok'],
+  refute: ['否证', 'bad'],
+  irrelevant: ['无关', 'mute'],
+};
+
+const OPS_STATE_LABEL = {
+  submitted: ['已提交', 'warn', '任务已创建，等待开始'],
+  working: ['诊断中', 'warn', '图正在执行'],
+  input_required: ['待你决定', 'warn', '写动作之前必须人工审批；也可能是症状信息不足需要补充'],
+  completed: ['已完成', 'ok', '诊断结束，结论可用'],
+  failed: ['失败', 'bad', '任务失败或按预算中止'],
+  canceled: ['已取消', 'bad', '任务被显式取消'],
+};
+
+//: 根因是模型自由生成的字符串，没有枚举约束——所以未知值必须原样显示。
+//: 强行翻译成"未知根因"会把新出现的根因类型藏起来，这在排障场景里是致命的。
+const ROOT_CAUSE_LABEL = {
+  carrier_stuck: '承运商滞留',
+  carrier_delay: '承运商延误',
+  out_of_stock: '库存不足',
+  address_invalid: '收货地址异常',
+  payment_failed: '支付未成功',
+  duplicate_outbound: '重复出库',
+  rule_misjudge: '规则误判',
+};
+
+const OPS_SAMPLES = [
+  ['承运商滞留', '订单 O20261100001：客户下单三天了还没收到货，查物流一直停在武汉分拨中心不动'],
+  ['缺货未发', '订单 O20261100006：下单两天了还显示待发货，客服只说在协调，客户催得急'],
+  ['地址异常', '订单 O20261100011：客户说物流显示派送异常但没收到任何电话或短信'],
+  ['扣款未到账', '订单 O20261100016：客户说钱已经从银行卡扣了，但订单一直显示待支付'],
+  ['重复出库', '订单 O20261100021：客户收到两个一样的包裹，问是不是发重了'],
+  ['赔付误判', '订单 O20261100026：系统提示这单超时该赔付，但承运商说是台风封路，到底要不要赔'],
+];
+
+const ops = {
+  taskId: '', state: '', finish: '', running: false, controller: null,
+  steps: [], evidence: [], approval: null, question: null, schema: null,
+  result: null, usage: null, traceId: '', t0: 0, online: false,
+  //: 全程累计。一个任务会被审批切成两段流，每段一个 ledger——
+  //: 只显示最后一段的 usage，会得到"跑了 4 步却写着 steps 1"这种自相矛盾的数字。
+  tokens: 0,
+  //: 诊断耗时，不含审批等待。审批可能等人几十分钟，算进耗时就失去了意义。
+  elapsed: 0,
+};
+
+function accumulateUsage(u) {
+  if (!u) return;
+  const n = (u.input_tokens || 0) + (u.output_tokens || 0);
+  if (n > 0) ops.tokens += n;
+}
+
+function opsBadge(state, kind, hint) {
+  const el = $('#ops-state');
+  el.hidden = !state;
+  el.textContent = state || '';
+  el.className = `badge ${kind || ''}`.trim();
+  el.title = hint || '';
+}
+
+function paintOpsState() {
+  const hit = OPS_STATE_LABEL[ops.state];
+  if (hit) { opsBadge(...hit); return; }
+  if (ops.state) opsBadge(ops.state, 'bad', `未登记的任务状态：${ops.state}`);
+  else opsBadge('', '', '');
+}
+
+function paintOpsMetrics() {
+  const el = $('#ops-metrics');
+  if (!ops.steps.length && !ops.tokens) { el.innerHTML = ''; return; }
+  const elapsed = ops.elapsed + (ops.running && ops.t0 ? performance.now() - ops.t0 : 0);
+  const parts = [
+    `<span><span class="k">节点</span> ${ops.steps.length}</span>`,
+    `<span><span class="k">tokens</span> ${ops.tokens || '—'}</span>`,
+    `<span><span class="k">elapsed</span> ${ms(elapsed)}</span>`,
+  ];
+  if (ops.taskId) parts.push(`<span><span class="k">task</span> ${esc(ops.taskId)}</span>`);
+  if (ops.traceId) parts.push(`<span><span class="k">trace</span> ${esc(ops.traceId.slice(0, 12))}</span>`);
+  el.innerHTML = parts.join('');
+}
+
+function paintOpsTimeline() {
+  const el = $('#ops-timeline');
+  if (!ops.steps.length && !ops.evidence.length) {
+    el.innerHTML = '<div class="empty">提交症状后，节点进度与证据判定会实时出现在这里。</div>';
+    return;
+  }
+  const steps = ops.steps.map((s, i) => `
+      <li class="ops-step">
+        <span class="ops-idx">${esc(s.step ?? i + 1)}</span>
+        <span class="ops-node">${esc(NODE_LABEL[s.node] || s.node || '')}</span>
+        ${s.note ? `<span class="ops-note">${esc(s.note)}</span>` : ''}
+      </li>`).join('');
+
+  const evid = ops.evidence.map((e) => {
+    const [label, kind] = VERDICT_LABEL[e.verdict] || [e.verdict || '—', 'mute'];
+    return `<li class="ops-evid">
+        <span class="ops-verdict ${kind}">${esc(label)}</span>
+        <span class="ops-hyp">${esc(e.hypothesis_id || '')}</span>
+        ${e.summary ? `<span class="ops-note">${esc(e.summary)}</span>` : ''}
+      </li>`;
+  }).join('');
+
+  el.innerHTML = `${
+    steps ? `<div class="ops-sec">节点</div><ol class="ops-steps">${steps}</ol>` : ''
+  }${
+    evid ? `<div class="ops-sec">证据判定</div><ul class="ops-evid-list">${evid}</ul>` : ''
+  }`;
+  el.scrollTop = el.scrollHeight;
+}
+
+function paintOpsResult() {
+  const el = $('#ops-result');
+  const conf = $('#ops-conf');
+  const r = ops.result;
+
+  if (!r || !r.root_cause) {
+    el.innerHTML = ops.state === 'completed'
+      ? '<div class="empty">任务已完成，但没有给出根因。</div>'
+      : '<div class="empty">还没有结论。</div>';
+    conf.textContent = '';
+    return;
+  }
+
+  const label = ROOT_CAUSE_LABEL[r.root_cause] || r.root_cause;
+  conf.textContent = r.confidence == null ? '' : `置信度 ${pct(r.confidence)}`;
+  el.innerHTML = `
+    <div class="ops-root">
+      <div class="ops-root-label">根因</div>
+      <div class="ops-root-name">${esc(label)}</div>
+      ${label === r.root_cause ? '' : `<div class="ops-root-raw">${esc(r.root_cause)}</div>`}
+    </div>
+    ${r.summary ? `<div class="ops-summary">${renderText(r.summary, new Map(), false)}</div>` : ''}`;
+}
+
+function paintOpsApproval() {
+  const el = $('#ops-approval');
+  if (ops.state !== 'input_required' || (!ops.approval && !ops.question)) {
+    el.hidden = true;
+    el.innerHTML = '';
+    return;
+  }
+  el.hidden = false;
+
+  if (!ops.approval) {
+    // 澄清：按 schema.fields 的属性生成输入框。schema 缺失时退化成单个文本框，
+    // 不猜字段名——猜错了后端会 422，用户看到的是一次支付了 token 的失败。
+    const props = (ops.schema && ops.schema.properties) || null;
+    const fields = props
+      ? Object.keys(props).map((k) => `
+          <label class="ops-field">
+            <span>${esc((props[k] && props[k].description) || k)}</span>
+            <input type="text" data-ops-field="${esc(k)}" autocomplete="off">
+          </label>`).join('')
+      : '<label class="ops-field"><span>补充信息</span><input type="text" data-ops-field="answer" autocomplete="off"></label>';
+    el.innerHTML = `
+      <div class="ops-ask">
+        <div class="ops-ask-title">需要补充信息</div>
+        <div class="ops-ask-q">${esc(ops.question || '症状里缺少关键信息')}</div>
+        ${fields}
+        <button type="button" class="btn" data-ops-act="clarify">提交并继续</button>
+      </div>`;
+    return;
+  }
+
+  const ap = ops.approval;
+  const risk = { low: ['低风险', 'ok'], medium: ['中风险', 'warn'], high: ['高风险', 'bad'] }[ap.risk_level]
+    || [ap.risk_level || '未知风险', 'warn'];
+  el.innerHTML = `
+    <div class="ops-ask">
+      <div class="ops-ask-title">等待审批 · 写动作前</div>
+      <div class="ops-action">
+        <code>${esc(ap.action_type)}</code>
+        <span class="ops-risk ${risk[1]}">${esc(risk[0])}</span>
+      </div>
+      ${ap.params ? `<pre class="ops-params">${esc(JSON.stringify(ap.params, null, 2))}</pre>` : ''}
+      <input type="text" id="ops-comment" placeholder="拒绝原因（可选，会回灌给模型重新规划）" autocomplete="off">
+      <div class="ops-ask-btns">
+        <button type="button" class="btn" data-ops-act="approve">通过并执行</button>
+        <button type="button" class="btn btn-ghost" data-ops-act="reject">拒绝</button>
+      </div>
+    </div>`;
+}
+
+function paintOpsNotice(text, kind = 'danger') {
+  const el = $('#ops-notice');
+  el.hidden = !text;
+  el.className = `notice ${kind}`;
+  el.textContent = text || '';
+}
+
+//: 排障域是独立进程。没起来的时候不要让人对着"请求失败"猜——
+//: 直接说清是哪个端口、怎么起。
+async function checkOpsHealth() {
+  const box = $('#ops-svc');
+  const text = $('#ops-svc-text');
+  try {
+    const r = await fetch(`${API_OPS}/healthz`, { signal: AbortSignal.timeout(3000) });
+    const d = await r.json();
+    ops.online = true;
+    box.className = 'ops-svc is-ok';
+    text.textContent = `排障域 :8002 · 就绪${d.tasks ? ` · 任务 ${d.tasks}` : ''}`;
+  } catch {
+    ops.online = false;
+    box.className = 'ops-svc is-bad';
+    text.textContent = '排障域 :8002 未连通';
+    text.title = '另起一个进程：python scripts/kw.py serve-fulfillment';
+  }
+}
+
+async function fetchOpsTask() {
+  if (!ops.taskId) return null;
+  try {
+    const r = await fetch(`${API_OPS}/v1/fulfillment/tasks/${encodeURIComponent(ops.taskId)}`);
+    return r.ok ? await r.json() : null;
+  } catch {
+    return null;
+  }
+}
+
+async function onOpsEvent(event, data) {
+  switch (event) {
+    case 'start':
+      ops.traceId = data.trace_id || ops.traceId;
+      paintOpsMetrics();
+      break;
+
+    case 'progress':
+      ops.steps.push({ step: data.step, node: data.node, note: data.note });
+      paintOpsTimeline();
+      break;
+
+    case 'evidence':
+      ops.evidence.push({ hypothesis_id: data.hypothesis_id, verdict: data.verdict, summary: data.summary });
+      paintOpsTimeline();
+      break;
+
+    case 'action_proposal':
+      ops.approval = data.approval || null;
+      break;
+
+    case 'input_required': {
+      // 流在这里正常关闭：任务不是失败，是停在等人。
+      ops.state = 'input_required';
+      ops.taskId = data.task_id || ops.taskId;
+      ops.approval = data.approval || ops.approval;
+      ops.question = data.question || null;
+      ops.schema = data.schema || null;
+      paintOpsState();
+      paintOpsApproval();
+      // input_required 事件不带 usage，得回头查任务才拿得到这一段的消耗
+      const paused = await fetchOpsTask();
+      if (paused) accumulateUsage(paused.usage);
+      paintOpsMetrics();
+      break;
+    }
+
+    case 'done': {
+      ops.finish = data.finish_reason || '';
+      ops.usage = data.usage || null;
+      accumulateUsage(data.usage);
+      ops.taskId = data.task_id || ops.taskId;
+      const task = await fetchOpsTask();
+      if (task) {
+        ops.state = task.state || ops.state;
+        ops.result = task.result || null;
+      } else {
+        ops.state = data.finish_reason === 'answered' ? 'completed' : 'failed';
+      }
+      ops.approval = null;
+      ops.question = null;
+      paintOpsState();
+      paintOpsApproval();
+      paintOpsResult();
+      paintOpsMetrics();
+      break;
+    }
+
+    case 'error':
+      ops.state = 'failed';
+      paintOpsState();
+      paintOpsNotice(`${data.code || 'ERROR'}：${data.message || '请求失败'}`);
+      break;
+
+    default:
+      break;
+  }
+}
+
+async function setOpsRunning(running, label) {
+  ops.running = running;
+  const btn = $('#ops-btn');
+  btn.disabled = running;
+  btn.textContent = running ? (label || '诊断中') : '开始诊断';
+}
+
+//: 一段流结束时把耗时并入累计，t0 归零。
+//: 不这么做的话，"提交→等审批 3 分钟→点通过"会把 3 分钟算成诊断耗时。
+function closeOpsSegment() {
+  if (ops.t0) {
+    ops.elapsed += performance.now() - ops.t0;
+    ops.t0 = 0;
+  }
+}
+
+async function submitOps(symptom) {
+  const text = String(symptom || '').trim();
+  if (!text || ops.running) return;
+
+  Object.assign(ops, {
+    taskId: '', state: 'working', finish: '', steps: [], evidence: [],
+    approval: null, question: null, schema: null, result: null, usage: null,
+    traceId: '', t0: performance.now(), tokens: 0, elapsed: 0,
+  });
+  ops.controller = new AbortController();
+  paintOpsTimeline();
+  paintOpsResult();
+  paintOpsApproval();
+  paintOpsState();
+  paintOpsMetrics();
+  paintOpsNotice('');
+  setOpsRunning(true);
+
+  try {
+    const resp = await fetch(`${API_OPS}/v1/fulfillment/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Contract-Version': CONTRACT },
+      body: JSON.stringify({
+        symptom: text,
+        subject_ctx: PERSONAS.employee.ctx,
+        session_id: sid(),
+      }),
+      signal: ops.controller.signal,
+    });
+    await consumeSSE(resp, onOpsEvent);
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    ops.state = 'failed';
+    paintOpsState();
+    const hint = ops.online
+      ? `请求失败：${err.message}`
+      : '排障域没有响应。它是独立进程，需要另开一个终端跑：python scripts/kw.py serve-fulfillment（:8002）';
+    paintOpsNotice(hint);
+    checkOpsHealth();
+  } finally {
+    closeOpsSegment();
+    setOpsRunning(false);
+    paintOpsMetrics();
+  }
+}
+
+async function resumeOps(payload) {
+  if (!ops.taskId || ops.running) return;
+  setOpsRunning(true, '继续中');
+  paintOpsNotice('');
+  ops.controller = new AbortController();
+  ops.t0 = performance.now();
+
+  try {
+    const resp = await fetch(`${API_OPS}/v1/fulfillment/tasks/${encodeURIComponent(ops.taskId)}/resume`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Contract-Version': CONTRACT },
+      // 恢复必须重传 subject_ctx：恢复不是"延续旧权限"，后端会重新校验
+      body: JSON.stringify({ task_id: ops.taskId, subject_ctx: PERSONAS.employee.ctx, ...payload }),
+      signal: ops.controller.signal,
+    });
+    // 批准之后任务继续跑，所以这里的状态先回到 working
+    ops.state = 'working';
+    ops.approval = null;
+    ops.question = null;
+    paintOpsState();
+    paintOpsApproval();
+    await consumeSSE(resp, onOpsEvent);
+  } catch (err) {
+    if (err.name === 'AbortError') return;
+    ops.state = 'failed';
+    paintOpsState();
+    paintOpsNotice(`恢复失败：${err.message}`);
+  } finally {
+    closeOpsSegment();
+    setOpsRunning(false);
+    paintOpsMetrics();
+  }
+}
+
+function initOps() {
+  $('#ops-hints').innerHTML = OPS_SAMPLES
+    .map(([label, text]) => `<button type="button" class="chip" data-symptom="${esc(text)}" title="${esc(text)}">${esc(label)}</button>`)
+    .join('');
+
+  $('#ops-hints').addEventListener('click', (e) => {
+    const btn = e.target.closest('.chip');
+    if (!btn) return;
+    $('#ops-symptom').value = btn.dataset.symptom;
+    submitOps(btn.dataset.symptom);
+  });
+
+  $('#ops-form').addEventListener('submit', (e) => {
+    e.preventDefault();
+    submitOps($('#ops-symptom').value);
+  });
+
+  $('#ops-approval').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-ops-act]');
+    if (!btn) return;
+
+    if (btn.dataset.opsAct === 'approve') {
+      // 取值必须是 approved / rejected：契约里是过去分词，写 approve 会被 422 打回来
+      resumeOps({ approval: { approval_id: ops.approval.approval_id, decision: 'approved' } });
+    } else if (btn.dataset.opsAct === 'reject') {
+      resumeOps({
+        approval: {
+          approval_id: ops.approval.approval_id,
+          decision: 'rejected',
+          comment: ($('#ops-comment') || {}).value || '',
+        },
+      });
+    } else if (btn.dataset.opsAct === 'clarify') {
+      const fields = {};
+      $$('[data-ops-field]', $('#ops-approval')).forEach((input) => {
+        if (input.value.trim()) fields[input.dataset.opsField] = input.value.trim();
+      });
+      if (!Object.keys(fields).length) {
+        paintOpsNotice('至少填一项再提交', 'warn');
+        return;
+      }
+      resumeOps({ clarification: { fields } });
+    }
+  });
+
+  checkOpsHealth();
+}
+
 // ---------------------------------------------------------------- 启动
 initNav();
 initChat();
 initCompare();
 initEval();
+initOps();
 checkHealth();

@@ -21,6 +21,7 @@
 
     <nav class="nav">
       <button class="nav-item is-active" data-view="chat">知识问答</button>
+      <button class="nav-item" data-view="ops">订单排障</button>
       <button class="nav-item" data-view="compare">权限对比</button>
       <button class="nav-item" data-view="eval">评测看板</button>
     </nav>
@@ -84,6 +85,53 @@
             <div class="empty" style="padding:10px">本次作答引用的证据会列在这里。</div>
           </div>
           <button type="button" class="cite-more" id="cite-more" hidden></button>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ============================================ 订单排障 -->
+    <section class="view" id="view-ops" hidden>
+      <header class="view-head">
+        <div>
+          <h1>订单排障</h1>
+          <p class="view-desc">独立服务 :8002 · 假设验证式诊断 · 写动作之前必须人工审批</p>
+        </div>
+        <div class="ops-svc" id="ops-svc">
+          <span class="dot"></span>
+          <span id="ops-svc-text">检测中</span>
+        </div>
+      </header>
+
+      <form class="ask" id="ops-form">
+        <div class="ask-row">
+          <input type="text" id="ops-symptom" placeholder="描述症状并带上订单号，如：订单 O20261100001 卡在已出库未签收" autocomplete="off">
+          <button type="submit" class="btn" id="ops-btn">开始诊断</button>
+        </div>
+        <div class="hints" id="ops-hints"></div>
+      </form>
+
+      <div class="ops-grid">
+        <article class="panel ops-flow-panel">
+          <div class="panel-head">
+            <span>诊断过程</span>
+            <span class="badge" id="ops-state" hidden></span>
+          </div>
+          <div class="ops-timeline" id="ops-timeline">
+            <div class="empty">提交症状后，节点进度与证据判定会实时出现在这里。</div>
+          </div>
+          <footer class="metrics" id="ops-metrics"></footer>
+        </article>
+
+        <aside class="panel ops-result-panel">
+          <div class="panel-head">
+            <span>结论</span>
+            <span class="count" id="ops-conf"></span>
+          </div>
+          <div class="ops-approval" id="ops-approval" hidden></div>
+          <div class="ops-result" id="ops-result">
+            <div class="empty">还没有结论。</div>
+          </div>
+          <div class="notice" id="ops-notice" hidden></div>
         </aside>
       </div>
     </section>

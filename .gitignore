@@ -1,6 +1,9 @@
 # 本地环境
 .env
+# 备份同样含明文密钥，只写 .env 挡不住 .env.bak-20261105 这类文件
+.env.*
 deploy/.env
+deploy/.env.*
 .venv/
 venv/
 

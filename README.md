@@ -249,7 +249,7 @@ python scripts/kw.py codegen
 # 7) 自检：openapi 引用 + operationId + SQL 语法 + pydantic 的 extra="forbid" + prompt 指纹 + 抽象隔离
 python scripts/kw.py verify
 
-# 8) 单元测试（114 条：契约 / 事件顺序 / 任务恢复 / 抽象隔离 / 预算硬停 / 解析 / 分块 / 检索 / 评测判定 / 演示页）
+# 8) 单元测试（180 条：契约 / 事件顺序 / 任务恢复 / 抽象隔离 / 预算硬停 / 解析 / 分块 / 检索 / 评测判定 / 演示页 / 跨域）
 python scripts/kw.py test
 
 # 9) M0 端到端验收（双域假链路 + span 树关联，18 项断言）
@@ -260,11 +260,17 @@ python scripts/kw.py serve-knowledge      # :8001，/healthz + /v1/knowledge/ans
 python scripts/kw.py serve-fulfillment    # :8002，/healthz + /v1/fulfillment/tasks
 
 # 10.1) 演示页（服务起来后直接用浏览器开 http://localhost:8001/）
-#   三个视图：
+#   四个视图：
 #     · 知识问答   —— SSE 流式作答，引用侧栏，点正文里的角标联动高亮
+#     · 订单排障   —— 调 **:8002** 的排障域，实时显示假设验证过程；
+#                     写动作前停下来等审批，通过后从 checkpoint 续跑（不重跑 LLM）
 #     · 权限对比   —— 同一问题两个身份并发检索，拦截发生在 SQL 而不是回答后打码
 #     · 评测看板   —— 读 eval/runs 的跑批产物，三档对比 + 检索层 rerank 开关对比
-#   和后端同源（FastAPI 挂 StaticFiles），没有构建链，改 web/ 下的文件刷新即可
+#   页面本身挂在知识域（同源，FastAPI StaticFiles），没有构建链，改 web/ 刷新即可。
+#   但「订单排障」是**跨进程**的：必须另起 serve-fulfillment，否则那一页会显示
+#   "排障域 :8002 未连通"。跨域白名单在 app_fulfillment 里显式给
+#   （默认 localhost:8001 / 127.0.0.1:8001，可用 KW_DEMO_ORIGINS 覆盖）——
+#   不用 "*"，因为这个服务能触发审批与动作。
 #
 #   右上角可切控制流，两档的代价差一个数量级（实测同一道题）：
 #     管线式   5~10 秒   retrieve → synthesize → verify
@@ -275,6 +281,7 @@ python scripts/kw.py serve-fulfillment    # :8002，/healthz + /v1/fulfillment/t
 #   60s 会让 Agentic 在 synthesize 之前撞预算，前端显示"证据不足"，
 #   那是预算不够，不是能力不够。
 KW_LLM_MODE=online python scripts/kw.py serve-knowledge   # 想要真实作答就用 online
+KW_LLM_MODE=online python scripts/kw.py serve-fulfillment  # 想用「订单排障」页就一起起
 
 # 10.2) 在 PyCharm 里跑（等价于第 10 步，仓库已带好 Run Configuration）
 #   ① Interpreter 选项目根的 .venv（已是 venv + --system-site-packages，免重装 docling）
