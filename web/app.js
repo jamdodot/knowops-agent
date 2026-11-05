@@ -42,6 +42,24 @@ const EXAMPLES = [
   '员工出差住宿标准是多少？',
 ];
 
+//: finish_reason 的中文说法。三个字段各自有用，不能只显示一个：
+//: 徽章文字回答"这次成了没成"，kind 决定颜色，hint 解释"为什么"——
+//: 只给英文原值的话，看的人得先知道 degraded 和 abstained 的区别才看得懂。
+const FINISH_LABEL = {
+  answered: ['已作答', 'ok', '模型给出了带引用的答案'],
+  degraded: ['已降级', 'warn', '有环节降级（撞预算或上游不可用），答案仍可用但可能不完整'],
+  abstained: ['证据不足', 'warn', '检索到的证据撑不住结论，按拒答处理'],
+  escalated: ['已转人工', 'warn', '自动处理失败，已移交人工'],
+  error: ['出错', 'bad', '请求失败，没有产出答案'],
+};
+
+function finishBadge(reason) {
+  const hit = FINISH_LABEL[reason];
+  if (hit) return hit;
+  // 未知值照原样显示，但要标成异常态：静默翻译成"已作答"会把新状态藏起来
+  return [reason || '未知', 'bad', `未登记的状态：${reason}`];
+}
+
 // ---------------------------------------------------------------- 工具
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -75,11 +93,17 @@ function renderText(raw, eidIndex, streaming) {
 // ---------------------------------------------------------------- SSE
 // 用 fetch 而不是 EventSource：EventSource 只支持 GET，而问答是 POST + JSON body。
 // SSE 帧格式在这里手解：空行分帧，`:` 开头是心跳注释，data 一定是 JSON。
-async function streamAnswer({ query, subject, onEvent, signal }) {
+async function streamAnswer({ query, subject, graph, onEvent, signal }) {
   const resp = await fetch(API_ANSWERS, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Contract-Version': CONTRACT },
-    body: JSON.stringify({ query, subject_ctx: subject, session_id: sid(), turn_seq: 1 }),
+    body: JSON.stringify({
+      query,
+      subject_ctx: subject,
+      session_id: sid(),
+      turn_seq: 1,
+      ...(graph ? { graph } : {}),
+    }),
     signal,
   });
 
@@ -135,6 +159,12 @@ function initNav() {
   });
 }
 
+//: 左下角只报"服务通不通"，不报图名。
+//: 图名是**每次请求**的选项（右上角能切），写死在这里会跟当前选择打架：
+//: 切到 Agentic 后左下角还写着"管线式"，看起来像切换没生效。
+//: 本次实际用的是哪张图，由指标行的 `graph` 字段负责说。
+const DOMAIN_LABEL = { knowledge: '知识域', fulfillment: '排障域' };
+
 async function checkHealth() {
   const state = $('#svc-state');
   const text = $('#svc-text');
@@ -142,7 +172,8 @@ async function checkHealth() {
     const r = await fetch('/healthz');
     const d = await r.json();
     state.classList.add('is-ok');
-    text.textContent = `${d.domain} · ${d.graph}`;
+    text.textContent = `${DOMAIN_LABEL[d.domain] || d.domain} · 服务就绪`;
+    text.title = `默认图 ${d.graph}`;
   } catch {
     state.classList.add('is-bad');
     text.textContent = '服务未连通';
@@ -154,7 +185,14 @@ const chat = {
   raw: '', citations: [], eidIndex: new Map(),
   traceId: '', degraded: [], usage: null, finish: null,
   t0: 0, running: false, controller: null,
+  //: 本次提问用的控制流。存在 chat 里而不是只读 DOM：请求发出后用户可能又点了切换，
+  //: 结果回来时要说清"这条答案是哪张图跑的"。
+  graph: 'pipeline', answeredGraph: '',
 };
+
+//: 未引用的那几条默认收起来。用户展开过一次后，同一页面内保持展开——
+//: 每次作答都重新折叠的话，正在看证据的人会被打断。
+let citesExpanded = false;
 
 function paintAnswer(streaming) {
   const body = $('#answer-body');
@@ -177,6 +215,9 @@ function paintCitations() {
   if (!chat.citations.length) {
     $('#cite-count').textContent = '0';
     list.innerHTML = '<div class="empty" style="padding:10px">本次作答没有引用任何证据。</div>';
+    // 上一轮留下的"另有 N 条"必须清掉：它现在指向已经不存在的条目
+    const more = $('#cite-more');
+    if (more) more.hidden = true;
     return;
   }
   list.innerHTML = chat.citations.map((c, i) => {
@@ -200,14 +241,31 @@ function paintCitations() {
 
 //: 侧栏列出的是"本次发出的引用集合"，正文了不一定全用到。
 //: 不标出来的话，观众会觉得"6 条引用但正文只提到 2 个"是渲染 bug。
+//: 但一屏 5 条里 3 条灰着，真正被引用的两条会被淹没——所以默认折叠未引用的。
 function markUsedCitations() {
   const used = new Set((chat.raw.match(EID_RE) || []).map((m) => m.slice(1, -1)));
+  let unused = 0;
   $$('.cite-card').forEach((card) => {
-    card.classList.toggle('is-unused', !used.has(card.dataset.cite));
+    const isUnused = !used.has(card.dataset.cite);
+    card.classList.toggle('is-unused', isUnused);
+    if (isUnused) unused += 1;
   });
   if (chat.citations.length) {
     $('#cite-count').textContent = `${used.size}/${chat.citations.length}`;
   }
+  const more = $('#cite-more');
+  if (!more) return;
+  const panel = $('.cite-panel');
+  panel?.classList.toggle('is-collapsed', !citesExpanded);
+  more.hidden = unused === 0;
+  if (unused) {
+    more.textContent = citesExpanded
+      ? `收起 ${unused} 条未被正文引用的证据`
+      : `另有 ${unused} 条相关证据未被正文引用 · 展开`;
+  }
+  // 正文还没到的时候（只有 citation 帧）不显示这个按钮：
+  // 此刻所有条目都"未引用"，数字会在流式过程中一路跳，读起来像出错。
+  if (!chat.raw) more.hidden = true;
 }
 
 function focusCitation(eid) {
@@ -216,11 +274,12 @@ function focusCitation(eid) {
   if (target) target.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
-function setBadge(text, kind) {
+function setBadge(text, kind, hint) {
   const el = $('#finish-badge');
   el.hidden = !text;
   el.textContent = text || '';
   el.className = `badge ${kind || ''}`.trim();
+  el.title = hint || '';
 }
 
 function paintMetrics() {
@@ -232,9 +291,12 @@ function paintMetrics() {
   const parts = [
     `<span><span class="k">tokens</span> ${tokens || '—'}</span>`,
     `<span><span class="k">steps</span> ${u.steps ?? '—'}</span>`,
-    `<span><span class="k">cost</span> $${(u.cost_usd || 0).toFixed(5)}</span>`,
     `<span><span class="k">elapsed</span> ${ms(elapsed)}</span>`,
   ];
+  // 成本恒为 0 时干脆不显示：`$0.00000` 不是"很便宜"，是"这格没配价目表"，
+  // 摆在演示页上只会让人以为算错了。
+  if (u.cost_usd) parts.push(`<span><span class="k">cost</span> $${u.cost_usd.toFixed(4)}</span>`);
+  if (chat.answeredGraph) parts.push(`<span><span class="k">graph</span> ${esc(chat.answeredGraph)}</span>`);
   if (chat.traceId) parts.push(`<span><span class="k">trace</span> ${esc(chat.traceId.slice(0, 12))}</span>`);
   el.innerHTML = parts.join('');
 }
@@ -255,11 +317,19 @@ async function submitAsk(query) {
   Object.assign(chat, {
     raw: '', citations: [], eidIndex: new Map(), traceId: '',
     degraded: [], usage: null, finish: null, t0: performance.now(), running: true,
+    answeredGraph: '',
   });
 
   const btn = $('#ask-btn');
   btn.disabled = true;
   btn.textContent = '生成中';
+  setSegDisabled(true);
+  // 秒表：Agentic 要跑 60 秒以上，只写"生成中"的话用户会以为页面死了。
+  // 用 setInterval 而不是 requestAnimationFrame——这里只需要"每秒提醒一次"，不需要跟帧。
+  const tick = setInterval(() => {
+    const s = Math.max(0, Math.round((performance.now() - chat.t0) / 1000));
+    btn.textContent = `生成中 ${s}s`;
+  }, 1000);
   setBadge('', '');
   $('#chat-notice').hidden = true;
   paintCitations();
@@ -272,6 +342,7 @@ async function submitAsk(query) {
     await streamAnswer({
       query,
       subject: persona.ctx,
+      graph: chat.graph,
       signal: chat.controller.signal,
       onEvent: (event, data) => {
         if (event === 'meta') {
@@ -303,25 +374,61 @@ async function submitAsk(query) {
     });
     chat.running = false;
     paintAnswer(false);
+    chat.answeredGraph = chat.graph;
     const reason = chat.finish || '';
-    if (reason === 'answered') setBadge('answered', 'ok');
-    else if (reason === 'abstained') setBadge('abstained · 拒答', 'warn');
-    else if (reason) setBadge(reason, 'bad');
+    if (reason) setBadge(...finishBadge(reason));
   } catch (err) {
     chat.running = false;
     paintAnswer(false);
     if (err.name === 'AbortError') return;
-    setBadge('error', 'bad');
+    setBadge(...FINISH_LABEL.error);
     const el = $('#chat-notice');
     el.hidden = false;
     el.className = 'notice danger';
     el.textContent = `请求失败：${err.message}`;
   } finally {
     chat.running = false;
+    clearInterval(tick);
     btn.disabled = false;
     btn.textContent = '发送';
+    setSegDisabled(false);
     paintMetrics();
   }
+}
+
+//: 两个控制流的代价差得太远（实测 4s vs 40s），切换时必须把这件事说出来，
+//: 否则用户会以为页面卡死；更糟的是撞上 deadline 后看到"证据不足"，
+//: 从而得出"Agentic 更差"的错误结论——那是预算不够，不是能力不够。
+const GRAPH_HINT = {
+  pipeline: '',
+  agentic: 'Agentic 会多跑意图分析、计划、证据评级与改写回环：同一道题通常 60~95 秒，管线式 5~10 秒。'
+    + '慢的这几步换回来的是可解释的判定过程，不是更高的正确率。',
+};
+
+function paintGraphHint() {
+  const el = $('#graph-hint');
+  if (!el) return;
+  const text = GRAPH_HINT[chat.graph] || '';
+  el.hidden = !text;
+  el.textContent = text;
+}
+
+function setSegDisabled(disabled) {
+  $$('.seg-btn').forEach((b) => { b.disabled = disabled; });
+}
+
+function initGraphSeg() {
+  $$('.seg-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      // 跑着的时候不让切：切换只影响下一次请求，中途改状态会让"正在生成"的
+      // 那条答案标错图名。
+      if (chat.running) return;
+      chat.graph = btn.dataset.graph;
+      $$('.seg-btn').forEach((b) => b.classList.toggle('is-on', b === btn));
+      paintGraphHint();
+    });
+  });
+  paintGraphHint();
 }
 
 function initChat() {
@@ -350,6 +457,13 @@ function initChat() {
     const card = e.target.closest('.cite-card');
     if (card) focusCitation(card.dataset.cite);
   });
+
+  $('#cite-more').addEventListener('click', () => {
+    citesExpanded = !citesExpanded;
+    markUsedCitations();
+  });
+
+  initGraphSeg();
 }
 
 // ---------------------------------------------------------------- 权限对比
@@ -359,6 +473,7 @@ async function runOne(persona) {
     await streamAnswer({
       query: $('#cmp-question').value,
       subject: persona.ctx,
+      graph: chat.graph,
       onEvent: (event, data) => {
         if (event === 'citation') state.citations = data.citations || [];
         else if (event === 'delta') state.text += data.text || '';
@@ -391,10 +506,10 @@ function cmpColumnHtml(personaKey, state) {
         <div class="blocked-title">无可见证据 · 未作答</div>
         <div class="blocked-sub">检索阶段就没有命中该主体可访问的片段</div>
       </div>`;
-    badge = ['拦截', 'bad'];
+    badge = ['拦截', 'bad', '检索返回 0 条该主体可访问的证据，因此未作答'];
   } else {
     body = `<div class="cmp-body">${renderText(state.text, new Map(state.citations.map((c, i) => [c.eid, i + 1])), false)}</div>`;
-    badge = [state.finish || 'answered', state.finish === 'answered' ? 'ok' : 'warn'];
+    badge = finishBadge(state.finish || 'answered');
   }
 
   const u = state.usage || {};
@@ -406,7 +521,7 @@ function cmpColumnHtml(personaKey, state) {
           <span class="cmp-persona">${esc(p.label)}</span>
           <span class="cmp-dept">${esc(p.dept)} · ${esc(p.ctx.roles.join('/'))}</span>
         </div>
-        <span class="badge ${badge[1]}">${esc(badge[0])}</span>
+        <span class="badge ${badge[1]}" title="${esc(badge[2] || '')}">${esc(badge[0])}</span>
       </div>
       ${body}
       <div class="cmp-stats">
@@ -415,6 +530,46 @@ function cmpColumnHtml(personaKey, state) {
         <span>tokens ${tokens || '—'}</span>
       </div>
     </article>`;
+}
+
+//: 结论条：把"两列答案不一样长"翻译成一句能直接读的话。
+//: 只摆两个答案的话，看的人要自己去数引用条数才看得懂权限起没起作用——
+//: 而"谁命中了哪几篇"正好是这个演示最该被一眼看到的东西。
+function paintVerdict(keys, results) {
+  const el = $('#cmp-verdict');
+  if (!el) return;
+  const [ra, rb] = results;
+  const pa = PERSONAS[keys[0]];
+  const pb = PERSONAS[keys[1]];
+  const docsOf = (r) => new Set((r?.citations || []).map((c) => c.doc_id || c.title));
+  const da = docsOf(ra);
+  const db = docsOf(rb);
+  const na = (ra?.citations || []).length;
+  const nb = (rb?.citations || []).length;
+  const onlyA = [...da].filter((d) => !db.has(d));
+  const onlyB = [...db].filter((d) => !da.has(d));
+
+  const list = (arr) => {
+    const head = arr.slice(0, 3).map((d) => `《${esc(d)}》`).join('、');
+    return arr.length > 3 ? `${head} 等 ${arr.length} 篇` : head;
+  };
+
+  let head;
+  if (na === 0 && nb === 0) {
+    head = '两个身份都没检索到可访问证据 —— 这个问题的答案不在任何一方可读的文档里。';
+  } else if (onlyA.length === 0 && onlyB.length === 0) {
+    head = `两边命中的是同一批文档（各 <span class="v-num">${na}</span> 条）—— 这个问题没有体现权限差异，换个问题试试。`;
+  } else {
+    const parts = [];
+    if (onlyB.length) parts.push(`仅 <b>${esc(pb.label)}</b> 命中 ${list(onlyB)}`);
+    if (onlyA.length) parts.push(`仅 <b>${esc(pa.label)}</b> 命中 ${list(onlyA)}`);
+    head = `同一问题：${esc(pa.label)} <span class="v-num">${na}</span> 条，`
+      + `${esc(pb.label)} <span class="v-num">${nb}</span> 条。${parts.join('；')}。`;
+  }
+
+  el.hidden = false;
+  el.innerHTML = `${head}
+    <div class="v-muted" style="margin-top:4px">同一个问题、同一次检索、同一套排序 —— 差别只来自 SQL 里的权限条件，不来自回答之后的打码。</div>`;
 }
 
 async function submitCompare() {
@@ -426,15 +581,19 @@ async function submitCompare() {
 
   btn.disabled = true;
   btn.textContent = '检索中';
+  setSegDisabled(true);
   const keys = ['employee', 'payroll'];
+  $('#cmp-verdict').hidden = true;
   grid.innerHTML = keys.map((k) => cmpColumnHtml(k, { pending: true, running: true, citations: [], usage: {} })).join('');
 
   try {
     const results = await Promise.all(keys.map((k) => runOne(PERSONAS[k])));
     grid.innerHTML = keys.map((k, i) => cmpColumnHtml(k, results[i])).join('');
+    paintVerdict(keys, results);
   } finally {
     btn.disabled = false;
     btn.textContent = '并发对比';
+    setSegDisabled(false);
   }
 }
 
@@ -486,38 +645,49 @@ function delta(value, base, kind) {
   return `${sign}${d.toFixed(4)}`;
 }
 
+function renderRetrievalTable(g) {
+  const [off, on] = g.items;
+  const a = off.summary.overall || {};
+  const b = on.summary.overall || {};
+  const rows = [
+    ['Recall@10', num(a['recall@10'], 4), num(b['recall@10'], 4), '—'],
+    ['MRR@10', num(a['mrr@10'], 4), num(b['mrr@10'], 4), delta(b['mrr@10'], a['mrr@10'])],
+    ['nDCG@10', num(a['ndcg@10'], 4), num(b['ndcg@10'], 4), delta(b['ndcg@10'], a['ndcg@10'])],
+    ['p50 延迟', ms(a.p50_ms), ms(b.p50_ms), delta(b.p50_ms, a.p50_ms, 'ms')],
+  ].map(([k, v1, v2, d]) => `<tr>
+      <td>${esc(k)}</td>
+      <td class="num">${v1}</td>
+      <td class="num">${v2}</td>
+      <td class="num">${esc(d)}</td>
+    </tr>`).join('');
+
+  return `
+    <div class="panel" style="margin-bottom:14px">
+      <div class="panel-head">
+        <span>检索层 · ${esc(g.tag)}</span>
+        <span class="count">n=${a.n ?? 0} 有金标题</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>指标</th><th class="num">${esc(rerankLabel(off.key))}</th><th class="num">${esc(rerankLabel(on.key))}</th><th class="num">变化</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+//: 只有最新一批是"当前结论"，旧批是"过程"。
+//: 五张同结构的表并排堆着，看的人得先分辨哪张才算数——这不算信息，算噪音。
 function renderRetrievalBlock() {
   if (!retrievalGroups.length) return '';
-  return retrievalGroups.map((g) => {
-    const [off, on] = g.items;
-    const a = off.summary.overall || {};
-    const b = on.summary.overall || {};
-    const rows = [
-      ['Recall@10', num(a['recall@10'], 4), num(b['recall@10'], 4), '—'],
-      ['MRR@10', num(a['mrr@10'], 4), num(b['mrr@10'], 4), delta(b['mrr@10'], a['mrr@10'])],
-      ['nDCG@10', num(a['ndcg@10'], 4), num(b['ndcg@10'], 4), delta(b['ndcg@10'], a['ndcg@10'])],
-      ['p50 延迟', ms(a.p50_ms), ms(b.p50_ms), delta(b.p50_ms, a.p50_ms, 'ms')],
-    ].map(([k, v1, v2, d]) => `<tr>
-        <td>${esc(k)}</td>
-        <td class="num">${v1}</td>
-        <td class="num">${v2}</td>
-        <td class="num">${esc(d)}</td>
-      </tr>`).join('');
-
-    return `
-      <div class="panel" style="margin-bottom:14px">
-        <div class="panel-head">
-          <span>检索层 · ${esc(g.tag)}</span>
-          <span class="count">n=${a.n ?? 0} 有金标题</span>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>指标</th><th class="num">${esc(rerankLabel(off.key))}</th><th class="num">${esc(rerankLabel(on.key))}</th><th class="num">变化</th></tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </div>
-      </div>`;
-  }).join('');
+  const [latest, ...rest] = retrievalGroups;
+  const older = rest.length
+    ? `<details class="older">
+        <summary>更早的检索批（${rest.length}）— 已被上面这批取代，仅留档</summary>
+        ${rest.map(renderRetrievalTable).join('')}
+      </details>`
+    : '';
+  return renderRetrievalTable(latest) + older;
 }
 
 async function loadEvalRuns(force) {

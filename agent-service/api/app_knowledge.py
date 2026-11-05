@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+import threading
 import traceback
 from pathlib import Path
 
@@ -42,6 +43,14 @@ EVAL_RUNS = SERVICE_ROOT.parent / "eval" / "runs"
 #: 再拼上 .json 虽然越不出目录，但没必要留这种余地。
 _TAG_RE = re.compile(r"(?!.*\.\.)[A-Za-z0-9_.\-]{1,64}")
 
+#: 请求可指定的图。**必须是白名单**：req.graph 最终会拼进 import_module，
+#: 让客户端决定导入哪个模块等于把模块加载权交出去。
+#: 名字刻意与领域概念解耦（pipeline / agentic 是控制流风格，不是域名）。
+_GRAPH_CHOICES: dict[str, str] = {
+    "pipeline": "graph_pipeline",
+    "agentic": "graph",
+}
+
 
 def create_app(settings: Settings | None = None, *, domain_dir: Path | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
@@ -50,6 +59,25 @@ def create_app(settings: Settings | None = None, *, domain_dir: Path | None = No
     rt = build_runtime(domain_dir or DOMAINS_ROOT / "knowledge", settings)
     graph = rt.build_graph()
     replay = ReplayCache()
+
+    #: 换图要缓存：build() 每次都重新编译 LangGraph，放在请求路径上等于每问一次多花几十毫秒。
+    #: 加锁是因为首次并发请求可能同时进来，两边都建一遍图不会错，但没必要。
+    _graphs: dict[str, object] = {rt.pack.graph: graph}
+    _graphs_lock = threading.Lock()
+
+    def graph_for(name: str | None):
+        """缺省返回启动时那张图；显式给名字就按白名单换一张（不存在则编译一次并缓存）。"""
+        if not name:
+            return graph
+        module = _GRAPH_CHOICES.get(name)
+        if module is None:
+            raise KwError(Code.INVALID_SCHEMA, f"不支持的图：{name}")
+        with _graphs_lock:
+            hit = _graphs.get(module)
+            if hit is None:
+                hit = rt.build_graph(module)
+                _graphs[module] = hit
+            return hit
 
     app = FastAPI(title=f"KnowOps {rt.pack.name}", version=settings.service_version)
     app.state.runtime = rt
@@ -88,6 +116,9 @@ def create_app(settings: Settings | None = None, *, domain_dir: Path | None = No
             preflight = list(rt.guard.check_subject(req.subject_ctx))
             rt.guard.check_input(req.query)
             budget_ms = http_util.deadline_ms(headers, settings.default_deadline_ms)
+            # 换图在**建流之前**做完：选了不存在的图要能用 4xx 表达，
+            # 一旦回了 200 text/event-stream 就只能从流里读 error 帧了。
+            run_graph_obj = graph_for(req.graph)
         except KwError as exc:
             return http_util.error_response(exc, tracing.current_trace_id() or None)
 
@@ -148,7 +179,14 @@ def create_app(settings: Settings | None = None, *, domain_dir: Path | None = No
             with rt.use(ctx):
                 try:
                     result = rt.run_graph(
-                        graph, {"query": req.query}, thread_id=f"{req.session_id}:{req.turn_seq}:{req.subject_ctx.subject_epoch}"
+                        run_graph_obj,
+                        {"query": req.query},
+                        # thread_id 带图名：同一个 session 先后跑两种图时，
+                        # 共享 checkpointer 会让第二张图读到第一张图的 state。
+                        thread_id=(
+                            f"{req.session_id}:{req.turn_seq}:{req.subject_ctx.subject_epoch}"
+                            f":{req.graph or 'default'}"
+                        ),
                     )
                     finish = _finish_reason(result, rt.pack.stop.on_budget, sink)
                     sink.done(FinishReason(finish), ledger.usage())

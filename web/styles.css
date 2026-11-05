@@ -138,9 +138,45 @@ button { font-family: inherit; font-size: inherit; cursor: pointer; }
 .main { min-width: 0; padding: 28px 32px 56px; max-width: 1280px; }
 .view[hidden] { display: none; }
 
-.view-head { margin-bottom: 20px; }
+.view-head {
+  margin-bottom: 20px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
 .view-head h1 { margin: 0 0 4px; font-size: 19px; font-weight: 500; letter-spacing: -.01em; }
 .view-desc { margin: 0; color: var(--muted); font-size: 13px; }
+
+/* 控制流切换：两个选项、互斥、当前项必须一眼可辨。
+   不用 select 是因为这里要表达"两种都在、只选一个"，下拉框读起来像过滤器。 */
+.seg {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  flex: none;
+}
+.seg-btn {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.seg-btn:hover { color: var(--text); }
+.seg-btn.is-on {
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgb(0 0 0 / .06);
+}
+.seg-btn:disabled { cursor: progress; opacity: .6; }
 
 /* ---------------------------------------------------------------- 控件 */
 .panel {
@@ -214,7 +250,7 @@ select:focus, input[type="text"]:focus { border-color: var(--accent); }
   align-items: start;
 }
 
-.answer-panel { display: flex; flex-direction: column; min-height: 340px; }
+.answer-panel { display: flex; flex-direction: column; }
 .answer-body {
   padding: 16px 18px;
   flex: 1;
@@ -271,6 +307,23 @@ sup.eid {
 sup.eid:hover { background: var(--accent); color: #fff; }
 
 .cite-list { padding: 8px; display: flex; flex-direction: column; gap: 8px; max-height: 520px; overflow-y: auto; }
+
+/* "另有 N 条未采纳"：它是分类器不是内容，所以要弱于引用卡片本身 */
+.cite-more {
+  margin: 0 8px 8px;
+  padding: 7px 10px;
+  width: calc(100% - 16px);
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.cite-more:hover { color: var(--text); border-color: var(--accent-border); }
+.cite-more[hidden] { display: none; }
 .cite-card {
   padding: 10px 12px;
   border: 1px solid var(--border);
@@ -279,7 +332,11 @@ sup.eid:hover { background: var(--accent); color: #fff; }
   transition: border-color .15s, background .15s;
 }
 .cite-card.is-focus { border-color: var(--accent); background: var(--accent-soft); }
-/* 发出了但正文没引用：置灰 + 标注。不标的话"6 条引用、正文只提 2 个"像是渲染错了 */
+/* 发出了但正文没引用：默认收起来。
+   理由和"为什么当初要标出来"是同一件事的两面——标出来是为了不让人误以为渲染漏了，
+   但一屏 5 条里 3 条灰着标"未引用"，反而把真正被引用的两条淹了。
+   所以改成：默认只列被引用的，其余折成一行"另有 N 条"的按钮，需要时展开。 */
+.cite-panel.is-collapsed .cite-card.is-unused { display: none; }
 .cite-card.is-unused { opacity: .5; }
 .cite-card.is-unused .cite-title::after {
   content: "未引用";
@@ -340,7 +397,50 @@ sup.eid:hover { background: var(--accent); color: #fff; }
 .cmp-form { display: flex; gap: 8px; margin-bottom: 16px; }
 .cmp-form input { flex: 1; min-width: 0; }
 
+/* 历史批折叠：留档但不占版面。默认收起是刻意的——
+   打开看板时该看到的是"当前结论"，而不是五张并列的同类表 */
+.older { margin-bottom: 14px; }
+.older > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--muted);
+  padding: 9px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+.older > summary:hover { color: var(--text); border-color: var(--accent-border); }
+
 .cmp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+
+/* 结论条：两列的差异要由页面替你算出来，而不是让看的人读两段文字比长短。
+   数字必须等宽，否则"3 条 / 5 条"扫视时对不齐。 */
+/* 切到 Agentic 时的提示。必须显式说清"要等多久"——
+   否则 40 秒的空白会被当成卡死，而它其实是在多跑 4 步。 */
+.graph-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--warn);
+  background: var(--warn-soft);
+  border: 1px solid var(--warn-border);
+  border-radius: 8px;
+  padding: 7px 11px;
+}
+.graph-hint[hidden] { display: none; }
+
+.cmp-verdict {
+  margin-bottom: 14px;
+  padding: 11px 14px;
+  border: 1px solid var(--accent-border);
+  background: var(--accent-soft);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--text);
+}
+.cmp-verdict[hidden] { display: none; }
+.cmp-verdict .v-num { font-family: var(--mono); font-weight: 600; }
+.cmp-verdict .v-muted { color: var(--muted); }
 
 .cmp-col { display: flex; flex-direction: column; min-height: 300px; }
 .cmp-id { display: flex; align-items: center; gap: 8px; }

@@ -245,16 +245,30 @@ def cmd_prompt_lock() -> None:
 # ---------------------------------------------------------------------------
 # 服务与测试
 # ---------------------------------------------------------------------------
-def _serve(entry: str, port: str) -> None:
+def _serve(entry: str, port: str, *, graph_module: str | None = None) -> None:
     env = dict(os.environ)
     env["PYTHONPATH"] = str(SERVICE_DIR) + os.pathsep + env.get("PYTHONPATH", "")
     env.setdefault("PORT", port)
+    if graph_module:
+        # 用 setdefault 而不是直接赋值：命令行里显式给了 KW_GRAPH_MODULE 就以用户为准，
+        # 这样"起个 agentic 看看"不需要改脚本。
+        env.setdefault("KW_GRAPH_MODULE", graph_module)
     log(f"启动 {entry}（{env['PORT']}）…")
     subprocess.run([sys.executable, "-m", f"api.{entry}"], cwd=SERVICE_DIR, env=env, check=False)
 
 
 def cmd_serve_knowledge() -> None:
-    _serve("main_knowledge", "8001")
+    # 演示页默认走管线式：同一批题 agentic 要 60s 级、pipeline 5s 级，
+    # 而评测已经证明 agentic 相对 pipeline 没有正确率增益（docs/15 §2.1）。
+    # 演示要让人在 5 秒内看到结果；想看 agentic 的对照，页面上有开关，
+    # 或者 `KW_GRAPH_MODULE=graph python scripts/kw.py serve-knowledge`。
+    #
+    # deadline 放宽到 180s 是给 agentic 用的：它实跑 6 步、3000 tokens，
+    # 60s 会在 synthesize 之前撞预算，前端看到的是"证据不足"——
+    # 这会让人误以为 agentic 更差，而实际是预算不够（实测同一题 180s 下稳定 answered）。
+    # 注意客户端只能收窄不能放宽 deadline（api/http.py），所以这里必须给够。
+    os.environ.setdefault("KW_DEFAULT_DEADLINE_MS", "180000")
+    _serve("main_knowledge", "8001", graph_module="graph_pipeline")
 
 
 def cmd_serve_fulfillment() -> None:

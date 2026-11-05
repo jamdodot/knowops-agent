@@ -157,6 +157,13 @@ components:
           enum: [auto, fact, multi_hop, chitchat]
           default: auto
           description: 仅用于评测复现，不参与线上分流逻辑。
+        graph:
+          type: string
+          maxLength: 64
+          description: >-
+            同一域的另一个控制流（如 pipeline）。缺省走服务端启动时加载的那张图。
+            取值受服务端白名单约束，不在白名单内返回 INVALID_SCHEMA。
+            用途是演示与对照：两张图是同一套工具、两套控制流，换图不该换数据。
 
     FulfillmentTaskRequest:
       type: object

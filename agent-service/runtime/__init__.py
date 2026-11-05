@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -66,6 +67,8 @@ class Runtime:
     working: WorkingMemory
     checkpointer: Any
     _graph_module: Any = None
+    #: 构建期临时覆盖的图名（见 build_graph）。为 None 时用 pack.graph。
+    _graph_name: str | None = None
 
     # ------------------------------------------------------------------ 上下文
     @contextmanager
@@ -88,15 +91,41 @@ class Runtime:
 
     # ------------------------------------------------------------------ 图
     def graph(self, state_schema: type) -> GraphBuilder:
-        return GraphBuilder(self, state_schema, name=self.pack.graph)
+        return GraphBuilder(self, state_schema, name=self._graph_name or self.pack.graph)
 
-    def build_graph(self) -> Any:
-        if self._graph_module is None:
-            raise KwError(Code.INTERNAL, "pack 未加载 graph 模块")
-        built = self._graph_module.build(self)
-        if not isinstance(built, GraphBuilder):
-            raise KwError(Code.INTERNAL, "pack 的 build() 必须返回 rt.graph(...) 得到的 builder")
-        return built.compile()
+    def build_graph(self, module: str | None = None) -> Any:
+        """``module`` 为空时用 pack 声明的图；显式给模块名则临时换一张。
+
+        为什么要允许换：同一个域里 agentic 与 pipeline 是**同一套工具、两套控制流**，
+        演示页需要现场对比两者的耗时差异。用环境变量换图要重启进程，
+        而重启就丢掉了"同一问题、同一批数据"的对照条件。
+
+        换图时把图名改成该模块声明的 ``NAME``：图名会进 span 与 trace 树，
+        沿用旧名字等于让报告说"跑的是 agentic"、实际跑的却是 pipeline。
+        白名单不在这里做——runtime 不认识有哪些域，也就无从判断哪些模块名合法；
+        合法性由调用方（API 层）负责，这里只保证"给名字就建图"。
+        """
+        if module is None:
+            if self._graph_module is None:
+                raise KwError(Code.INTERNAL, "pack 未加载 graph 模块")
+            mod = self._graph_module
+        else:
+            try:
+                mod = importlib.import_module(f"domains.{self.pack.name}.{module}")
+            except ImportError as exc:
+                raise KwError(Code.INVALID_SCHEMA, f"未知的图模块：{module}") from exc
+
+        # 名字必须在 build() **之前**设好：build() 内部会调用 rt.graph() 取名，
+        # 反过来写的话第一次构建拿到的还是旧名字。
+        prev = self._graph_name
+        self._graph_name = getattr(mod, "NAME", None) or self.pack.graph
+        try:
+            built = mod.build(self)
+            if not isinstance(built, GraphBuilder):
+                raise KwError(Code.INTERNAL, "pack 的 build() 必须返回 rt.graph(...) 得到的 builder")
+            return built.compile()
+        finally:
+            self._graph_name = prev
 
     def run_graph(self, graph: Any, inputs: dict[str, Any], *, thread_id: str, resume: dict[str, Any] | None = None) -> GraphResult:
         return run_graph(self, graph, inputs, thread_id=thread_id, resume=resume)

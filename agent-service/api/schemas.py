@@ -95,6 +95,14 @@ class AnswerRequest(BaseModel):
     domain_hint: Annotated[
         DomainHint | None, Field(description='仅用于评测复现，不参与线上分流逻辑。')
     ] = 'auto'
+    graph: Annotated[
+        str | None,
+        Field(
+            description='演示/对照用：同一域的另一个控制流（如 pipeline）。'
+            '缺省走服务端启动时加载的那张图；取值受服务端白名单约束。',
+            max_length=64,
+        ),
+    ] = None
 
 
 class TimeRange(BaseModel):

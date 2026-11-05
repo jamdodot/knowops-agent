@@ -265,6 +265,15 @@ python scripts/kw.py serve-fulfillment    # :8002，/healthz + /v1/fulfillment/t
 #     · 权限对比   —— 同一问题两个身份并发检索，拦截发生在 SQL 而不是回答后打码
 #     · 评测看板   —— 读 eval/runs 的跑批产物，三档对比 + 检索层 rerank 开关对比
 #   和后端同源（FastAPI 挂 StaticFiles），没有构建链，改 web/ 下的文件刷新即可
+#
+#   右上角可切控制流，两档的代价差一个数量级（实测同一道题）：
+#     管线式   5~10 秒   retrieve → synthesize → verify
+#     Agentic  60~95 秒  多出意图分析、计划、证据评级、改写回环
+#   默认走管线式：agentic 相对它没有正确率增益（docs/15 §2.1），
+#   演示要让人在几秒内看到结果。想看对照就在页面上点，不用改环境变量。
+#   服务默认 deadline 放到 180s（`scripts/kw.py` 里 setdefault）——
+#   60s 会让 Agentic 在 synthesize 之前撞预算，前端显示"证据不足"，
+#   那是预算不够，不是能力不够。
 KW_LLM_MODE=online python scripts/kw.py serve-knowledge   # 想要真实作答就用 online
 
 # 10.2) 在 PyCharm 里跑（等价于第 10 步，仓库已带好 Run Configuration）

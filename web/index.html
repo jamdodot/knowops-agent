@@ -38,8 +38,14 @@
     <!-- ============================================ 问答 -->
     <section class="view" id="view-chat">
       <header class="view-head">
-        <h1>知识问答</h1>
-        <p class="view-desc">SSE 流式作答 · 引用可溯源到片段 · 权限在检索阶段就下沉到 SQL</p>
+        <div>
+          <h1>知识问答</h1>
+          <p class="view-desc">SSE 流式作答 · 引用可溯源到片段 · 权限在检索阶段就下沉到 SQL</p>
+        </div>
+        <div class="seg" id="graph-seg" role="group" aria-label="切换控制流">
+          <button type="button" class="seg-btn is-on" data-graph="pipeline" title="固定五步：检索→作答→校验，约 3~6 秒">管线式</button>
+          <button type="button" class="seg-btn" data-graph="agentic" title="带改写回环与证据评级，步数更多、更慢">Agentic</button>
+        </div>
       </header>
 
       <form class="ask" id="ask-form">
@@ -53,6 +59,7 @@
           <button type="submit" class="btn" id="ask-btn">发送</button>
         </div>
         <div class="hints" id="hints"></div>
+        <div class="graph-hint" id="graph-hint" hidden></div>
       </form>
 
       <div class="answer-grid">
@@ -76,6 +83,7 @@
           <div class="cite-list" id="cite-list">
             <div class="empty" style="padding:10px">本次作答引用的证据会列在这里。</div>
           </div>
+          <button type="button" class="cite-more" id="cite-more" hidden></button>
         </aside>
       </div>
     </section>
@@ -88,14 +96,16 @@
       </header>
 
       <form class="cmp-form" id="cmp-form">
-        <input type="text" id="cmp-question" value="薪酬数据谁能查看？" autocomplete="off">
+        <input type="text" id="cmp-question" value="工资条在哪里查看？" autocomplete="off">
         <button type="submit" class="btn" id="cmp-btn">并发对比</button>
       </form>
       <div class="hints" style="margin:-8px 0 16px">
-        <button type="button" class="chip" data-cmp="薪酬数据谁能查看？">薪酬数据谁能查看？</button>
-        <button type="button" class="chip" data-cmp="什么情况下可以调阅他人的薪酬数据？">什么情况下可调阅他人薪酬？</button>
-        <button type="button" class="chip" data-cmp="单笔 6 万元的费用报销要谁审批？">单笔 6 万报销谁审批？</button>
+        <button type="button" class="chip" data-cmp="工资条在哪里查看？">工资条在哪查</button>
+        <button type="button" class="chip" data-cmp="薪酬保密制度对哪些人适用？">薪酬保密制度适用范围</button>
+        <button type="button" class="chip" data-cmp="薪酬结构由哪几部分组成？">薪酬结构</button>
       </div>
+
+      <div class="cmp-verdict" id="cmp-verdict" hidden></div>
 
       <div class="cmp-grid" id="cmp-grid"></div>
     </section>
