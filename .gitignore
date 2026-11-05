@@ -28,6 +28,13 @@ data/
 recordings/*.json
 recordings/*.jsonl
 
+# 跑批原始结果：一条命令就能重跑出来（见 eval/report-v2.md §7），1.9MB 的 JSON 不进仓库。
+# 报告里引用的数字与复现命令都在 eval/report-*.md，需要原始数据时重跑即可。
+eval/runs/*.json
+
+# 个人学习资料，与项目无关
+learning/
+
 # IDE / OS
 .idea/
 .vscode/
