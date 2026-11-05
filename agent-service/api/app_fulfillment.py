@@ -46,6 +46,8 @@ from runtime.config import Settings  # noqa: E402
 from runtime.errors import ContractViolation, KwError  # noqa: E402
 from runtime.events import EventSink  # noqa: E402
 
+import a2a  # noqa: E402  跨域委派的唯一通道（docs/13 §8）
+
 DOMAINS_ROOT = SERVICE_ROOT / "domains"
 
 #: 允许 resume/cancel 的状态。其余状态操作都是状态机冲突，不是"服务器出错"
@@ -309,6 +311,65 @@ def create_app(settings: Settings | None = None, *, domain_dir: Path | None = No
         # 诚实边界：M0 的图跑在线程里，cancel 只阻止后续 resume，不中断已开始的执行。
         # 真正的执行中断要等 asyncio 任务句柄 + 工具侧协作取消，M1 做。
         return JSONResponse(content=store.get(task_id).model_dump(mode="json", exclude_none=True))
+
+    # ------------------------------------------------------------------ A2A
+    # 挂两个端点：Agent Card（发现）+ JSON-RPC（委派）。
+    # 委派走 diagnose_only：上游 Agent 要的是根因，不是"重推承运商"这个动作；
+    # 让上游去批下游的写动作，等于把审批责任转移到没有审批界面的一侧。
+    def run_symptom(symptom: str, scope: dict, subject) -> dict:
+        import time
+
+        started = time.perf_counter()
+        sink = EventSink(
+            lambda *_: None,
+            trace_id=tracing.current_trace_id() or "a2a",
+            contract_version=settings.contract_version,
+            config_version="cfg-a2a",
+            prompt_set_sha=rt.prompt_set_sha,
+            acl_fingerprint=acl_fingerprint(subject),
+        )
+        ledger = rt.new_ledger(deadline_ms=settings.default_deadline_ms)
+        ctx = new_run_context(
+            domain=rt.pack.name,
+            sink=sink,
+            ledger=ledger,
+            subject=subject,
+            session_id=f"a2a-{uuid.uuid4().hex[:8]}",
+            config_version="cfg-a2a",
+            task_id=f"a2a_{uuid.uuid4().hex[:8]}",
+        )
+        with rt.use(ctx):
+            result = rt.run_graph(graph, {"symptom": symptom, "diagnose_only": True},
+                                  thread_id=f"a2a-{uuid.uuid4().hex[:8]}")
+        state = result.state or {}
+        return {
+            "state": "TASK_STATE_INPUT_REQUIRED" if result.paused else "TASK_STATE_COMPLETED",
+            "root_cause": state.get("root_cause"),
+            "confidence": state.get("confidence"),
+            "diagnosis": state.get("diagnosis"),
+            "hypotheses": [h.get("root_cause") for h in (state.get("hypotheses") or [])],
+            "status_message": str(state.get("stop_reason") or ""),
+            "elapsed_ms": round((time.perf_counter() - started) * 1000, 1),
+            "usage": ledger.usage().model_dump(mode="json"),
+        }
+
+    a2a.mount(
+        app,
+        card=a2a.AgentCard(
+            name="fulfillment-agent",
+            description="订单履约排障：假设验证式根因诊断（只读数据源 + SQL Guard）",
+            url=f"http://127.0.0.1:{settings.port}" if hasattr(settings, "port") else "http://127.0.0.1:8002",
+            version=settings.service_version,
+            skills=[
+                a2a.Skill(
+                    id="diagnose_order_symptom",
+                    name="订单履约诊断",
+                    description="输入症状描述（含订单号）与最小 scope，返回根因结论与置信度。只诊断不执行动作。",
+                )
+            ],
+        ),
+        run_symptom=run_symptom,
+    )
 
     return app
 

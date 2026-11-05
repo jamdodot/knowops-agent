@@ -33,7 +33,7 @@ from typing import Any, TypedDict
 
 from runtime import Runtime
 
-from . import nodes
+from . import delegate, nodes
 
 NAME = "knowledge_pipeline"
 
@@ -46,20 +46,26 @@ class State(TypedDict, total=False):
     finish_reason: str
     stop_reason: str
     bad_eids: list[str]
+    #: A2A 委派结果。只有带订单号的履约类问题才会写这个字段；
+    #: 其余问题它是空的——"没委派"和"委派失败"靠 `ok` 区分，不靠有没有这个键。
+    delegated: dict[str, Any]
 
 
 def build(rt: Runtime):
     g = rt.graph(State)
-    (g.node("retrieve", _retrieve).node("synthesize", nodes.synthesize).node(
-        "verify_citations", nodes.verify_citations
-    ).node("abstain", nodes.abstain))
+    (g.node("retrieve", _retrieve)
+      .node("delegate", delegate.maybe_delegate)
+      .node("synthesize", nodes.synthesize)
+      .node("verify_citations", nodes.verify_citations)
+      .node("abstain", nodes.abstain))
 
     g.entry("retrieve")
     g.route(
         "retrieve",
-        lambda s: "synthesize" if s.get("evidence") else "abstain",
-        {"synthesize": "synthesize", "abstain": "abstain"},
+        lambda s: "delegate" if s.get("evidence") else "abstain",
+        {"delegate": "delegate", "abstain": "abstain"},
     )
+    g.edge("delegate", "synthesize")
     g.edge("synthesize", "verify_citations")
     g.route("verify_citations", _after_verify, {"end": "END", "abstain": "abstain"})
     g.edge("abstain", "END")
