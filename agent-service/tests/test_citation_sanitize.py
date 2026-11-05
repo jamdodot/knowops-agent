@@ -50,3 +50,19 @@ def test_fullwidth_braces_are_normalized():
     fw = "保密义务 3 年。｛ｅ_某文档_某文档-c1｝"
     assert _EID.findall(fw) == []  # 原样匹配不到
     assert _EID.findall(_normalize_cite_chars(fw)) == ["e_某文档_某文档-c1"]
+
+
+def test_space_inside_braces_is_tolerated():
+    """花括号内侧带空白也要认，并且输出统一重建为标准写法。
+
+    实测 g-158 的正文是 `…人力资源部{ e_HR-离职交接管理办法_…-c5}`：
+    原正则不容忍空格 → 一条引用都没识别出来 → verify 判无票作答 → 答对的题被判拒答。
+    凡是"标记识别失败"的 bug，最终表现都是"答案对、结论错"，所以这类要逐个钉住。
+    """
+    known = {"e_HR-离职交接管理办法_HR-离职交接管理办法-c5"}
+    text = "请假超过 7 天需加签分管副总{ e_HR-离职交接管理办法_HR-离职交接管理办法-c5}"
+    assert _EID.findall(text) == ["e_HR-离职交接管理办法_HR-离职交接管理办法-c5"]
+
+    cleaned = _strip_unknown_eids(text, known)
+    assert "{e_HR-离职交接管理办法_HR-离职交接管理办法-c5}" in cleaned
+    assert "{ e_" not in cleaned, "正文里不该留残缺写法"

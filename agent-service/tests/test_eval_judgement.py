@@ -96,6 +96,30 @@ def test_leaked_terms_ignores_refusal_sentence() -> None:
     assert leaked_terms_in("单笔赔付上限 1000 元，超过须分管副总审批。", ["1000 元"]) == ["1000 元"]
 
 
+def test_refusal_sentence_variants_are_not_leaks():
+    """拒答的说法不止"未覆盖"一种，词表漏一个就多一条假泄漏。
+
+    实测 u-178：「…均未涉及残保金或差额人数的相关规定。」——"未涉及"不在
+    标志词表里（只有"不涉及"），于是整句被当成泄漏。中文的否定说法太多，
+    这里把见过的几种都钉住。
+    """
+    from eval_run import leaked_terms_in
+
+    terms = ["差额人数"]
+    for refusal in (
+        "现有资料未涉及差额人数的计算方式。",
+        "所提供的证据均未涉及差额人数。",
+        "资料中没有涉及差额人数的条款。",
+        "现有条款不含差额人数的计算口径。",
+    ):
+        assert leaked_terms_in(refusal, terms) == [], refusal
+
+    # 转折后真的给出内容，仍要抓到
+    assert leaked_terms_in("未涉及这个问题。差额人数按应安排减实际安排计算。", terms) == [
+        "差额人数"
+    ]
+
+
 def test_norm_ignores_spacing():
     """判定必须与排版无关：中文里"7 天"和"7天"是同一个事实。
 

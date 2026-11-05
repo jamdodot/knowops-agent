@@ -274,7 +274,7 @@ def _norm(text: str) -> str:
 # ------------------------------------------------- 越权泄漏：按句子判，不按全文判
 _SENT_SPLIT = re.compile(r"[。！？!?\n]")
 #: 拒答句的标志。出现在句子里说明这句在说"没有这条规定"，不是在陈述规定。
-_ABSTAIN_HINT = re.compile(r"未覆盖|未规定|未提及|未找到|未明确|无相关|无法|不涉及|暂无|没有|不含")
+_ABSTAIN_HINT = re.compile(r"未覆盖|未规定|未提及|未找到|未明确|未涉及|无相关|无法|不涉及|暂无|没有|不含")
 
 
 def leaked_terms_in(answer: str, terms: list[str]) -> list[str]:

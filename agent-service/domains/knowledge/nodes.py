@@ -21,7 +21,9 @@ from runtime import Runtime
 # eid 是 `e_{doc_id}_{chunk_id}`，而 doc_id 来自文件名，中文文档的 doc_id 就是中文。
 # 只允许 [A-Za-z0-9_] 会把中文 eid 全部漏掉，verify_citations 于是判"无票作答"，
 # 答案明明带了对的引用也被降级成 abstained（2026-11-04 真模型跑出来的）。
-_EID = re.compile(r"\{([A-Za-z0-9_\u4e00-\u9fff.\-]+)\}")
+# 花括号内侧允许空白：模型会写成 `{ e_HR-...}`，不容忍就整段漏匹配，
+# 标记留在正文里、没有一条引用成立 → 同样被判无票作答（2026-11-05 g-158 即此）。
+_EID = re.compile(r"\{\s*([A-Za-z0-9_\u4e00-\u9fff.\-]+)\s*\}")
 _SENTENCE = re.compile(r"(?<=[。；！？\n])")
 
 
@@ -75,7 +77,9 @@ def _strip_unknown_eids(text: str, known: set[str]) -> str:
     这里**不抛异常**：引用是否成立由 verify 判定——一个有效引用都没有就该拒答，
     而不是让整条链路 INTERNAL（2026-11-04 跑 82 条 e2e 时被这条打挂过）。
     """
-    return _EID.sub(lambda m: m.group(0) if m.group(1) in known else "", text)
+    # 命中时统一重建为标准形式 `{eid}`：正则容忍了花括号内的空白，
+    # 但正文不该带着 `{ eid }` 这种残缺写法出去（前端按 eid 精确匹配）
+    return _EID.sub(lambda m: f"{{{m.group(1)}}}" if m.group(1) in known else "", text)
 
 
 #: 全角字符归一。模型偶尔会把 `{ｅ_xxx}` 打成全角（尤其句末混排时），
