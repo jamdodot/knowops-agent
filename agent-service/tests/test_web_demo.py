@@ -58,7 +58,7 @@ def test_eval_runs_list_shape(client: TestClient) -> None:
     for item in runs:
         # key/kind 是前端分流依据；缺了页面会退化成"全部显示成端到端"
         assert item["key"], item
-        assert item["kind"] in ("e2e", "retrieval"), item
+        assert item["kind"] in ("e2e", "retrieval", "ops"), item
         assert isinstance(item["summary"], dict)
         # 列表刻意不带 cases：一份 run 30KB，全带到列表页没意义
         assert "cases" not in item
@@ -77,10 +77,15 @@ def test_eval_runs_kind_split(client: TestClient) -> None:
 
     e2e = [r for r in runs if r["kind"] == "e2e"]
     ret = [r for r in runs if r["kind"] == "retrieval"]
+    ops = [r for r in runs if r["kind"] == "ops"]
     for item in e2e:
         assert item["summary"].get("golden"), f"{item['key']} 标成 e2e 却没有 golden 段"
     for item in ret:
         assert item["summary"].get("overall"), f"{item['key']} 标成 retrieval 却没有 overall 段"
+    # 排障域的汇总键是 top1/top3，不是 golden/overall。混进 e2e 会让上面那条断言炸掉——
+    # 这不是测试太严，是"三个域的输出形状本来就不同，看板必须认得出"。
+    for item in ops:
+        assert "top1" in item["summary"], f"{item['key']} 标成 ops 却没有 top1"
 
 
 def test_eval_run_detail_carries_cases(client: TestClient) -> None:

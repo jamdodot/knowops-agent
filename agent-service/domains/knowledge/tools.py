@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import threading
 from pathlib import Path
@@ -111,6 +112,54 @@ def _visible(doc: dict[str, Any], subject: Any) -> tuple[bool, str]:
 
 def _tokens(text: str) -> set[str]:
     return set(_TOKEN.findall(text.lower()))
+
+
+#: 相关性下限：低于它的证据一律不送给模型。**默认关闭**，原因见下。
+#:
+#: 它要挡的故障是真实的：库里没有这条时，稀疏路仍会因词面命中返回 5 条"看起来相关"
+#: 的文档，模型于是用常识把答案补出来——`u-105` 就这么答出了受限文档里的原话。
+#: `dense_min_sim=0.55` 只卡向量路，拦不住稀疏路。
+#:
+#: 但上线前做了 A/B（300 条，同一个模型，`eval/runs/qwen-floor.json` 对 `qwen-pipeline`）：
+#:   正确率 98.99% → 97.98%（-2 条），拒答准确率 87.5% → 75%，泄漏率 0% → 0%（没改善）。
+#: **代价是真的，收益没出现。**
+#:
+#: 为什么标定时"0% 误伤"的结论是错的：标定只看**首名**分数（golden p10=0.828、
+#: 越权题中位 0.050，阈值 0.2 确实不误伤首名）。但真正被裁掉的是**次名**——
+#: 跨文档题（`cross_doc` 1.0 → 0.909）要的恰恰是第二份文档，它分数本来就低。
+#: 单看首名分布定阈值，等于只量了不会受伤的那一半。
+#:
+#: 所以真正的修法在收敛侧：让 `synthesize` 在证据不足时拒答，而不是靠检索层硬裁。
+#: 开关留着，给"宁可多拒不可乱答"的严格场景用（`KW_MIN_RELEVANCE=0.2`）。
+MIN_RELEVANCE_DEFAULT = 0.0
+
+
+def _min_relevance() -> float:
+    """读环境覆盖。显式设 0 表示关掉——评测 A/B 要用。"""
+    raw = (os.environ.get("KW_MIN_RELEVANCE") or "").strip()
+    if not raw:
+        return MIN_RELEVANCE_DEFAULT
+    try:
+        return max(0.0, float(raw))
+    except ValueError:
+        return MIN_RELEVANCE_DEFAULT
+
+
+def _drop_irrelevant(evs: list[Any], retriever: Any) -> tuple[list[Any], int]:
+    """按相关性下限过滤，返回 (保留, 丢弃数)。
+
+    **只在 rerank 真的跑过时才过滤**：没有重排时 `score` 是 RRF 融合值，
+    量纲在 0.0x 一档，拿 0.2 去卡会把全部证据清空——那不是"降低召回"，
+    是"关掉检索"。这类错误在单测里看不出来，只有在关掉 rerank 跑一遍才发现。
+    """
+    floor = _min_relevance()
+    if floor <= 0:
+        return evs, 0
+    notes = getattr(retriever, "last_backend_notes", None) or {}
+    if not str(notes.get("rerank") or "").startswith("ok"):
+        return evs, 0
+    kept = [e for e in evs if float(getattr(e, "score", 0) or 0) >= floor]
+    return kept, len(evs) - len(kept)
 
 
 # ------------------------------------------------------------------ 检索后端（惰性单例）
@@ -244,10 +293,18 @@ def register(registry: ToolRegistry) -> None:
             },
         ) as sp:
             evs = r.hybrid_retrieve(query, ctx.subject, top_k=top_k)
+            kept, dropped = _drop_irrelevant(evs, r)
             tracing.set_attrs(
-                sp, **{"knowops.retrieval.hits": len(evs), "knowops.retrieval.backend": type(r).__name__}
+                sp,
+                **{
+                    "knowops.retrieval.hits": len(evs),
+                    "knowops.retrieval.kept": len(kept),
+                    # 丢了几条必须能被看到：拒答率突然上升时，第一个要查的就是这个数
+                    "knowops.retrieval.dropped_irrelevant": dropped,
+                    "knowops.retrieval.backend": type(r).__name__,
+                },
             )
-        return [e.to_row() for e in evs]
+        return [e.to_row() for e in kept]
 
     @registry.register(
         name="doc_fetch",

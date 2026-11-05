@@ -255,8 +255,15 @@ def _scan_runs() -> list[dict[str, object]]:
             if not (isinstance(payload, dict) and isinstance(payload.get("cases"), list)):
                 continue
             cases = payload["cases"]
-            # 判定口径与 scripts/eval_compare.py 的 kind() 一致：检索层 case 带 retrieved
-            kind = "retrieval" if cases and "retrieved" in cases[0] else "e2e"
+            # 判定口径与 `scripts/eval_compare.py` 的 kind() 一致：检索层 case 带 retrieved。
+            # 排障域既不是检索也不是端到端问答——它没有 golden 段，只有 root_cause，
+            # 按 cases[0] 有没有 `root_cause` 单独认一档，否则会被当成 e2e 去要 golden。
+            if cases and "retrieved" in cases[0]:
+                kind = "retrieval"
+            elif cases and "root_cause" in cases[0]:
+                kind = "ops"
+            else:
+                kind = "e2e"
             runs.append(
                 {
                     "key": key,
