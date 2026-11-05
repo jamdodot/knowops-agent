@@ -150,7 +150,7 @@ def create_app(settings: Settings | None = None, *, domain_dir: Path | None = No
                     result = rt.run_graph(
                         graph, {"query": req.query}, thread_id=f"{req.session_id}:{req.turn_seq}:{req.subject_ctx.subject_epoch}"
                     )
-                    finish = _finish_reason(result, rt.pack.stop.on_budget)
+                    finish = _finish_reason(result, rt.pack.stop.on_budget, sink)
                     sink.done(FinishReason(finish), ledger.usage())
                     ok = True
                 except KwError as exc:
@@ -273,8 +273,13 @@ def _scan_runs() -> list[dict[str, object]]:
     return runs
 
 
-def _finish_reason(result, on_budget: str) -> str:
+def _finish_reason(result, on_budget: str, sink=None) -> str:
     if result.stopped:
+        # 撞预算时先看"已经发出去什么"。正文和引用都发了，用户屏幕上就是一份
+        # 带引用的完整答案，此时再落 abstained 等于 API 否认刚交付的内容，
+        # 下游还会据此转人工工单。契约里 `degraded` 就是给这种情况留的。
+        if sink is not None and sink.delivered:
+            return "degraded"
         return "abstained" if on_budget == "abstain" else "escalated"
     reason = str(result.state.get("finish_reason") or "")
     # 图跑完却没给结论，只能算拒答——绝不能默认"answered"，那会把 bug 变成"答了个空的"

@@ -331,10 +331,14 @@ def _judge(
         must = case.get("must_contain") or []
         hit = any(_norm(m) in _norm(answer) for m in must) if must else None
         row["content_ok"] = hit
+        # degraded 是"答案已交付但被预算截断"（A5 修复后的形态），内容命中仍算对，
+        # 但单独计一列 truncated，避免截断悄悄混进 answered 里当正常答案。
+        ok_finish = finish in ("answered", "degraded")
+        row["truncated"] = finish == "degraded"
         # 答了但没命中关键词 → 有证据却答偏，算 E6；直接拒答 → E10
-        row["correct"] = bool(finish == "answered" and hit)
+        row["correct"] = bool(ok_finish and hit)
         if not row["correct"]:
-            row["attribute"] = "E10" if finish != "answered" else "E6"
+            row["attribute"] = "E10" if not ok_finish else "E6"
     elif ds == "no_answer":
         # 该拒不拒 = 编造，比答错严重，单独归因。
         # 但"拒答"有两种形态，混算会冤枉模型：模型正确地说「现有资料未覆盖」之后

@@ -218,6 +218,17 @@ class EventSink:
         if mark not in self.late_degraded:
             self.late_degraded.append(mark)
 
+    @property
+    def delivered(self) -> bool:
+        """正文与引用是否都已经发到客户端。
+
+        收尾时要用它判断"能不能反悔"：`delta` 一旦发出就不可撤回，
+        此时再把 `finish_reason` 落成 `abstained`，等于**API 说没有答案、
+        用户屏幕上却摆着带引用的完整回答**，下游还会据此转人工。
+        这个属性只回答"发没发出去"，不判断答案质量——质量是 verify 的事。
+        """
+        return self._citation_sent and self._delta_started
+
     # ------------------------------------------------------------------ 内容
     def citation(self, citations: list[Citation]) -> None:
         self._ensure_running()
