@@ -249,7 +249,7 @@ python scripts/kw.py codegen
 # 7) 自检：openapi 引用 + operationId + SQL 语法 + pydantic 的 extra="forbid" + prompt 指纹 + 抽象隔离
 python scripts/kw.py verify
 
-# 8) 单元测试（180 条：契约 / 事件顺序 / 任务恢复 / 抽象隔离 / 预算硬停 / 解析 / 分块 / 检索 / 评测判定 / 演示页 / 跨域）
+# 8) 单元测试（196 条：契约 / 事件顺序 / 任务恢复 / 抽象隔离 / 预算硬停 / 解析 / 分块 / 检索 / 评测判定 / 演示页 / 跨域 / 流式切分 / 上游重试）
 python scripts/kw.py test
 
 # 9) M0 端到端验收（双域假链路 + span 树关联，18 项断言）
@@ -261,7 +261,7 @@ python scripts/kw.py serve-fulfillment    # :8002，/healthz + /v1/fulfillment/t
 
 # 10.1) 演示页（服务起来后直接用浏览器开 http://localhost:8001/）
 #   四个视图：
-#     · 知识问答   —— SSE 流式作答，引用侧栏，点正文里的角标联动高亮
+#     · 知识问答   —— 真流式（边生成边出字，首字 2~3s），引用侧栏，点角标联动高亮
 #     · 订单排障   —— 调 **:8002** 的排障域，实时显示假设验证过程；
 #                     写动作前停下来等审批，通过后从 checkpoint 续跑（不重跑 LLM）
 #     · 权限对比   —— 同一问题两个身份并发检索，拦截发生在 SQL 而不是回答后打码

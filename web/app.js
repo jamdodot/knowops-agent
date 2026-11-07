@@ -209,10 +209,17 @@ let citesExpanded = false;
 
 function paintAnswer(streaming) {
   const body = $('#answer-body');
-  body.innerHTML = chat.raw
-    ? renderText(chat.raw, chat.eidIndex, streaming)
-    : '<div class="empty">输入问题后，答案会逐字出现。</div>';
-  body.classList.toggle('cursor-blink', !!streaming);
+  if (chat.raw) {
+    body.innerHTML = renderText(chat.raw, chat.eidIndex, streaming);
+  } else if (streaming) {
+    // 请求已发出但第一帧正文还没到。这里**不能**继续显示"输入问题"那种引导文案——
+    // 用户明明已经问了，页面却让他"输入问题"，看着像没点成功。
+    body.innerHTML = '<div class="empty">正在检索证据、组织答案……</div>';
+  } else {
+    body.innerHTML = '<div class="empty">输入问题，或从上面的示例里选一条——作答时正文会边生成边出现。</div>';
+  }
+  // 光标只在真有正文时闪：空状态里挂一个孤立光标像渲染错了
+  body.classList.toggle('cursor-blink', !!streaming && !!chat.raw);
   if (streaming) body.scrollTop = body.scrollHeight;
 }
 
@@ -269,7 +276,9 @@ function markUsedCitations() {
   const more = $('#cite-more');
   if (!more) return;
   const panel = $('.cite-panel');
-  panel?.classList.toggle('is-collapsed', !citesExpanded);
+  // 流式进行中不折叠：此刻正文还没引用到任何一条，全折掉会让引用栏看起来是空的，
+  // 而"检索到了 5 条证据"恰恰是过程中最该被看见的信息。等跑完再按原规则收起。
+  panel?.classList.toggle('is-collapsed', !citesExpanded && !chat.running);
   more.hidden = unused === 0;
   if (unused) {
     more.textContent = citesExpanded
@@ -303,13 +312,13 @@ function paintMetrics() {
   const elapsed = chat.t0 ? performance.now() - chat.t0 : 0;
   const parts = [
     `<span><span class="k">tokens</span> ${tokens || '—'}</span>`,
-    `<span><span class="k">steps</span> ${u.steps ?? '—'}</span>`,
-    `<span><span class="k">elapsed</span> ${ms(elapsed)}</span>`,
+    `<span><span class="k">节点</span> ${u.steps ?? '—'}</span>`,
+    `<span><span class="k">耗时</span> ${ms(elapsed)}</span>`,
   ];
   // 成本恒为 0 时干脆不显示：`$0.00000` 不是"很便宜"，是"这格没配价目表"，
   // 摆在演示页上只会让人以为算错了。
   if (u.cost_usd) parts.push(`<span><span class="k">cost</span> $${u.cost_usd.toFixed(4)}</span>`);
-  if (chat.answeredGraph) parts.push(`<span><span class="k">graph</span> ${esc(chat.answeredGraph)}</span>`);
+  if (chat.answeredGraph) parts.push(`<span><span class="k">图</span> ${esc(chat.answeredGraph)}</span>`);
   if (chat.traceId) parts.push(`<span><span class="k">trace</span> ${esc(chat.traceId.slice(0, 12))}</span>`);
   el.innerHTML = parts.join('');
 }
@@ -539,7 +548,7 @@ function cmpColumnHtml(personaKey, state) {
       ${body}
       <div class="cmp-stats">
         <span>引用 ${state.citations.length}</span>
-        <span>steps ${u.steps ?? '—'}</span>
+        <span>节点 ${u.steps ?? '—'}</span>
         <span>tokens ${tokens || '—'}</span>
       </div>
     </article>`;
