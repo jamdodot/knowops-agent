@@ -194,6 +194,74 @@ class Runtime:
         ctx.ledger.charge(result.usage)
         return result.text
 
+    def llm_stream(
+        self,
+        prompt_id: str,
+        *,
+        role: str | None = None,
+        max_tokens: int | None = None,
+        **variables: Any,
+    ) -> Iterator[str]:
+        """流式版 llm_call：逐块吐增量，收尾时把 usage 一次计入账本。
+
+        为什么单独一个方法、而不是给 llm_call 加个 `stream=True`：
+        两者的**返回形状不同**（str 与生成器）。揉进一个函数后，调用方会对
+        生成器做字符串操作，表现为"答案变成一串内存地址"或"答案为空"——
+        这类错误不会抛异常，只会让输出静默变成垃圾。
+
+        计费放在 finally：调用方提前 break（比如攒够一句话就收工）时，
+        尾帧的 usage 可能还没到，此时按已收到的文本估算，而不是记 0。
+        """
+        ctx = self.current()
+        spec: PromptSpec = self.prompts.get(prompt_id)
+        rendered: Rendered = self.prompts.render(prompt_id, **variables)
+        used_role = role or spec.role
+        if self.llm is None:
+            raise KwError(Code.UPSTREAM_UNAVAILABLE, "模型未配置（KW_LLM_MODE=none）")
+
+        usage: Usage | None = None
+        emitted: list[str] = []
+        model = ""
+        try:
+            with tracing.span(
+                "shared.llm.stream",
+                {
+                    "knowops.domain": ctx.domain,
+                    "knowops.llm.role": used_role,
+                    "knowops.prompt.id": rendered.prompt_id,
+                    "knowops.prompt.version": rendered.version,
+                    "knowops.prompt.template_sha": rendered.template_sha256,
+                    "knowops.prompt.render_sha": rendered.render_sha256,
+                },
+            ) as sp:
+                for chunk in self.llm.stream(used_role, rendered, max_tokens=max_tokens):
+                    model = chunk.model or model
+                    if chunk.usage is not None:
+                        usage = chunk.usage
+                    if chunk.text:
+                        emitted.append(chunk.text)
+                        yield chunk.text
+                tracing.set_attrs(
+                    sp,
+                    **{
+                        "gen_ai.request.model": model,
+                        "gen_ai.usage.input_tokens": usage.input_tokens if usage else 0,
+                        "gen_ai.usage.output_tokens": usage.output_tokens if usage else 0,
+                        "knowops.llm.cost_usd": usage.cost_usd if usage else None,
+                        "knowops.llm.streamed": True,
+                    },
+                )
+        finally:
+            if usage is None:
+                # 走到这里说明流没跑到尾帧（取消/异常/调用方提前停）。
+                # 用已收到的字符粗估输出量——**记 0 会让预算约束看起来在工作，实际没在工作**。
+                usage = Usage(
+                    input_tokens=0,
+                    output_tokens=len("".join(emitted)) // 2,
+                    cost_usd=None,
+                )
+            ctx.ledger.charge(usage)
+
     # ------------------------------------------------------------------ 工具
     def tool(self, name: str, **args: Any) -> ToolResult:
         result = self.tools.call(name, args)

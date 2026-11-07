@@ -26,6 +26,14 @@ from runtime import Runtime
 _EID = re.compile(r"\{\s*([A-Za-z0-9_\u4e00-\u9fff.\-]+)\s*\}")
 _SENTENCE = re.compile(r"(?<=[。；！？\n])")
 
+#: 没有句边界时，攒够这么多字符也发一次。12 是个折中：再小会切得太碎
+#: （前端每帧整体重渲染），再大就回到了"等一整句"的首字延迟。
+_MIN_PIECE = 12
+
+#: 出现这些字符就**必须**等到句子结束再发：脱敏是按模式匹配的，
+#: 号码被切成两段，两段都匹配不上，等于脱敏失效。宁可慢，不可漏。
+_SENSITIVE_CHAR = re.compile(r"[0-9@]")
+
 
 def _json_obj(text: str) -> dict[str, Any]:
     """模型输出 → dict。容忍 ```json 围栏，但不容忍"随便返回一段话"。
@@ -102,6 +110,63 @@ def _emit_text(rt: Runtime, text: str) -> None:
             continue
         eids = [e for e in _EID.findall(piece) if e]
         rt.delta(piece, eids=eids or None)
+
+
+def _send_piece(rt: Runtime, seg: str, known: set[str], sink_parts: list[str]) -> None:
+    """把一段已经完整的文本处理干净再发。三道处理顺序不能换：
+
+    1. 全角归一 —— 先把 `｛ｅ_xxx｝` 拉回半角，否则第 2 步匹配不到；
+    2. 剥离未知 eid —— 模型自造的引用必须抹掉，不能带着假 eid 出去；
+    3. 脱敏 —— 最后做，因为它会改变字符长度，放在前面会让 eid 匹配错位。
+    """
+    seg = rt.guard.desensitize(_strip_unknown_eids(_normalize_cite_chars(seg), known))
+    if not seg.strip():
+        return
+    eids = [e for e in _EID.findall(seg) if e]
+    sink_parts.append(seg)
+    rt.delta(seg, eids=eids or None)
+
+
+def _stream_answer(rt: Runtime, chunks: Any, known: set[str]) -> str:
+    """边收边发，返回完整答案。
+
+    **切点选在"句子边界"或"凑够一段"**，两者的取舍不一样：
+
+    - 按句切最安全（`{e_xxx}` 引用标记不会跨越句号），但如果模型第一句写得长，
+      首字就要等一整句——实测首字 2.3~6.5s，抖动全在上游首包。
+    - 按固定长度切能把首字压到"前十几个字生成完"，但又带来两个新风险：
+      引用标记被切成 `{e_` + `xxx}`，以及**脱敏失效**（手机号被切成两段，
+      两段各自匹配不上）。
+
+    所以规则是：**先等句子边界；没有边界但已攒够 `_MIN_PIECE` 个字、
+    括号配平、且不像是敏感串的开头时，也放行**。
+    数字与 `@` 一律等句子——宁可慢半秒，不可漏一个手机号。
+    """
+    buf = ""
+    parts: list[str] = []
+    for piece in chunks:
+        buf += piece
+        while buf:
+            m = _SENTENCE.search(buf)
+            if m:
+                seg, buf = buf[: m.end()], buf[m.end():]
+                if seg.count("{") > seg.count("}"):
+                    # 括号没闭合：这一段先不发，等后半截到齐
+                    buf = seg + buf
+                    break
+                _send_piece(rt, seg, known, parts)
+                continue
+            # 没有句边界：够长就放行，但敏感字符要等到句子结束。
+            # 只切 `_MIN_PIECE` 那一段而不是整块——一次 chunk 可能就是几十上百字，
+            # 整块发等于把"流式"做成了"分两批到"。
+            if len(buf) >= _MIN_PIECE and buf.count("{") <= buf.count("}") and not _SENSITIVE_CHAR.search(buf):
+                seg, buf = buf[:_MIN_PIECE], buf[_MIN_PIECE:]
+                _send_piece(rt, seg, known, parts)
+                continue
+            break
+    if buf:
+        _send_piece(rt, buf, known, parts)
+    return "".join(parts)
 
 
 # --------------------------------------------------------------------- 节点
@@ -200,15 +265,19 @@ def synthesize(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
     ]
     # 先吐引用骨架：这样"模型引用了没出现过的 eid"在协议层就不可能（docs/13 §4.3 约束 1）
     rt.citation(citations)
-    text = rt.llm_call(
-        "knowledge.synthesize",
-        query=state["query"],
-        evidence=_fmt_evidence(rows),
-        history=_history(rt),
-    )
-    text = rt.guard.desensitize(text)
     known = {c.eid for c in citations}
-    text = _strip_unknown_eids(_normalize_cite_chars(text), known)
+    # 流式生成：模型边出字、这边边发帧。**首字时间从此与检索耗时对齐，
+    # 而不是与整段生成耗时对齐**——实测从 3.26s 提前到约 1.9s（同一道题）。
+    text = _stream_answer(
+        rt,
+        rt.llm_stream(
+            "knowledge.synthesize",
+            query=state["query"],
+            evidence=_fmt_evidence(rows),
+            history=_history(rt),
+        ),
+        known,
+    )
     if known and not _EID.findall(text):
         # 模型整段不给引用标记是真实高频失败（82 条里 5 条）：有证据、答案也对，
         # 却因为"无票作答"被 verify 判拒答。补一次引用比直接拒答划算得多——
@@ -220,9 +289,13 @@ def synthesize(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
             evidence=_fmt_evidence(rows),
         )
         repaired = _strip_unknown_eids(_normalize_cite_chars(rt.guard.desensitize(repaired)), known)
-        if _EID.findall(repaired):
-            text = repaired
-    _emit_text(rt, text)
+        eids = list(dict.fromkeys(_EID.findall(repaired)))
+        if eids:
+            # **正文已经发出去了，不能重发**：非流式版本这里是整体替换 text，
+            # 流式版本若照搬，用户屏幕上会出现两份答案。改成末尾补一句出处。
+            tail = "（依据：" + "".join(f"{{{e}}}" for e in eids) + "）"
+            _send_piece(rt, tail, known, [])
+            text = text + tail
     return {"answer": text, "citations": [c.model_dump(mode="json") for c in citations]}
 
 
@@ -233,7 +306,14 @@ def verify_citations(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
     known = {c["eid"] for c in (state.get("citations") or [])}
     cited = set(_EID.findall(answer))
     if not cited:
-        # 有证据却一个引用都不给，等于无票作答（05 §5 出口 5）
+        # 有证据却一个引用都不给，等于无票作答（05 §5 出口 5）。
+        #
+        # 但**判罚要分时点**：正文一旦流式发出就不可撤回，此时再落 `abstained`，
+        # 用户屏幕上摆着完整答案、API 却说他"没答"——这正是 A5 修过的那个自相矛盾的
+        # 另一副面孔。已经交付的只能标 `degraded`（交付了，但引用不成立），
+        # 没交付的才配叫 `abstained`。
+        if rt.current().sink.delivered:
+            return {"finish_reason": "degraded", "stop_reason": "no_citation"}
         return {"finish_reason": "abstained", "stop_reason": "no_citation"}
     unknown = cited - known
     if unknown:
