@@ -25,6 +25,56 @@ TASK_STATE_CANCELED = "TASK_STATE_CANCELED"
 
 TERMINAL = {TASK_STATE_COMPLETED, TASK_STATE_FAILED, TASK_STATE_CANCELED}
 
+#: 域标识。用于 A2A 委派链（scope.chain）与回环检测。
+SOURCE_KNOWLEDGE = "knowledge"
+SOURCE_FULFILLMENT = "fulfillment"
+
+#: 一条委派链最多几跳。两跳足够（知识→排障→知识就算回环了），
+#: 放更大只会让环跑得更久，不会让它变得合理。
+MAX_HOPS = 2
+
+#: scope 里存委派链的键。放进 scope 而不是 metadata 顶层，
+#: 是因为 scope 本来就是"最小授权 + 调用约束"的载体，链是约束不是数据。
+CHAIN_KEY = "chain"
+
+
+def chain_of(scope: dict[str, Any] | None) -> list[str]:
+    """从 scope 里读委派链，做防御性清洗。
+
+    不清洗的后果：对端可以传 `{"chain": "knowledge"}` 这种字符串，
+    于是 `"knowledge" in "knowledge"` 为真、`len()` 却按字符算——
+    校验看起来生效了，实际行为取决于传的是什么类型。
+    """
+    raw = (scope or {}).get(CHAIN_KEY)
+    if not isinstance(raw, (list, tuple)):
+        return []
+    return [str(x) for x in raw if isinstance(x, (str, int))]
+
+
+def extend_scope(scope: dict[str, Any] | None, *, domain: str) -> dict[str, Any]:
+    """委派时把本域追加到链上。
+
+    只在**出站**调用里用：发起方声明"我是谁"，对端据此判断还能不能再往外委派。
+    """
+    out = dict(scope or {})
+    out[CHAIN_KEY] = [*chain_of(out), domain]
+    return out
+
+
+def may_delegate(scope: dict[str, Any] | None, *, domain: str) -> tuple[bool, str]:
+    """本域还能不能继续往外委派。返回 (可否, 不可的原因)。
+
+    两条拒绝理由，对应两种不同的故障：
+    - 链里已有自己 → **回环**。知识→排障→知识，靠预算耗尽才停，trace 上是一串套娃 span。
+    - 链太长 → **扇出**。每次委派都带一次完整子图执行，跳数不封顶等于放大器。
+    """
+    chain = chain_of(scope)
+    if domain in chain:
+        return False, f"a2a_loop:{domain}"
+    if len(chain) >= MAX_HOPS:
+        return False, f"a2a_hops_exceeded:{len(chain)}"
+    return True, ""
+
 
 @dataclass
 class Part:
@@ -64,7 +114,13 @@ class AgentCard:
     url: str
     version: str
     skills: list[Skill]
+    #: 域标识，用于委派链与回环判定。空则由 name 推断（"fulfillment-agent" → "fulfillment"）。
+    #: 不直接拿 name 比较：name 是给人看的展示名，随时可能改，链上留着旧名就永远匹配不上。
+    id: str = ""
     capabilities: dict[str, bool] = field(default_factory=lambda: {"streaming": True, "pushNotifications": False})
+
+    def domain_id(self) -> str:
+        return self.id or self.name.removesuffix("-agent")
 
     def to_dict(self) -> dict[str, Any]:
         return {

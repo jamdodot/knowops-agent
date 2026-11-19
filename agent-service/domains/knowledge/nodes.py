@@ -260,6 +260,8 @@ def synthesize(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
             page_no=r.get("page_no"),
             section_path=r.get("section_path"),
             acl_epoch=r.get("acl_epoch", 0),
+            chunk_id=r.get("chunk_id"),
+            content=r.get("content"),
         )
         for r in rows
     ]

@@ -20,14 +20,23 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from runtime import sqlguard
+from a2a.client import ask_knowledge as a2a_ask
+from a2a.types import CHAIN_KEY, SOURCE_FULFILLMENT, may_delegate
+from api.schemas import DegradedEnum
+from runtime import current_context, sqlguard
 from runtime.registry import ToolRegistry
 
 SCHEMA = sqlguard.ALLOWED_SCHEMA
+
+#: 查条款给多少预算。比知识域默认的 30s 短一半：排障主诊断 p50 已经 29s，
+#: 再等 30s 查一条条款，用户看到的就是"排障越来越慢"。
+#: 拿不到条款可以照常出诊断（标 degraded），拖死整单不行。
+A2A_KNOWLEDGE_BUDGET_MS = 15_000
 
 #: 规则库留在内存：它是配置，不是业务数据。改规则要发版，不该和订单数据混在一起。
 RULES: dict[str, dict[str, Any]] = {
@@ -268,6 +277,78 @@ def register(registry: ToolRegistry) -> None:
     )
     def check_rule(rule_id: str) -> dict[str, Any]:
         return RULES.get(rule_id, {"rule_id": rule_id, "error": "not_found"})
+
+    # ---------------------------------------------------------------- 7b 跨域
+    @registry.register(
+        name="ask_knowledge",
+        description=(
+            "查制度/赔付条款原文（文档库）。当要判断"
+            "\"该不该赔、按哪条政策处理\"、且依据写在制度文件里时使用。"
+            "它查的是文档原文，不是规则触发条件——后者用 check_rule。"
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "question": {"type": "string", "description": "要查的具体问题，一句话，带上订单场景"},
+            },
+            "required": ["question"],
+            "additionalProperties": False,
+        },
+        # 工具超时必须大于 A2A 预算：否则工具先超时、远端还在跑，
+        # 表现是"这里判失败、知识域那边记了一次成功"，对账时两边不一致。
+        timeout_ms=A2A_KNOWLEDGE_BUDGET_MS + 1_000,
+        idempotent=True,
+        cost_hint="跨进程调知识域，p95 数秒",
+    )
+    def ask_knowledge(question: str) -> dict[str, Any]:
+        """把"制度怎么规定"这类问题委派给知识域。
+
+        为什么不让本域直接读文档库：权限模型在知识域（静态共享/动态共享/审批单），
+        排障域拿不到那套判定，硬读只会读出一个"看起来更全"但越权的结果。
+        走 A2A 的意义是**由有权限的一侧做检索**，而不是绕过它。
+        """
+        base_url = (os.environ.get("KW_A2A_KNOWLEDGE_URL") or "").strip()
+        ctx = current_context()
+        if not base_url:
+            # 未配置不是故障：单域启动时知识域本来就不在。
+            return {"available": False, "reason": "not_configured"}
+
+        # 自己也是被委派来的，且链里已经有知识域 —— 再发一次就是回环。
+        # 这里先判一次只是省一个注定被拒的往返；真正的门禁在对端入口。
+        chain = list(ctx.scratch.get("delegation_chain") or [])
+        allowed, why = may_delegate({CHAIN_KEY: chain}, domain=SOURCE_FULFILLMENT)
+        if not allowed:
+            return {"available": False, "reason": why}
+
+        subj = ctx.subject
+        if subj is None:
+            return {"available": False, "reason": "no_subject"}
+
+        reply = a2a_ask(
+            question,
+            subject={
+                "user_id": subj.user_id,
+                "account_status": subj.account_status,
+                "dept_paths": list(subj.dept_paths or []),
+                "roles": list(subj.roles or []),
+                "groups": list(subj.groups or []),
+                "subject_epoch": int(subj.subject_epoch or 1),
+            },
+            scope={"source": SOURCE_FULFILLMENT, "purpose": "policy_text"},
+            base_url=base_url,
+            parent_budget_ms=A2A_KNOWLEDGE_BUDGET_MS,
+        )
+        if not reply.ok:
+            # 降级必须可见：这是诊断里唯一"外部依据"类证据，缺了要说清缺什么
+            ctx.degrade(DegradedEnum.a2a)
+            return {"available": False, "reason": reply.degraded,
+                    "elapsed_ms": reply.elapsed_ms}
+        return {
+            "available": True,
+            "answer": reply.data.get("answer"),
+            "citations": reply.data.get("citations") or [],
+            "elapsed_ms": reply.elapsed_ms,
+        }
 
     # ---------------------------------------------------------------- 8 动作
     @registry.register(

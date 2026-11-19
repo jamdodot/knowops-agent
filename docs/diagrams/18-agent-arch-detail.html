@@ -1,0 +1,547 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agent 分层与协作链路（细化视图）</title>
+<style>
+  :root{
+    --bg:#f4f5f7;
+    --paper:#ffffff;
+    --ink:#1c2430;
+    --ink-2:#4a5566;
+    --ink-3:#7d8698;
+    --line:#dfe3ea;
+    --acc:#eaf2fb; --acc-b:#6e9bc9;
+    --gw:#e9f1fb;  --gw-b:#4a78b5;
+    --kn:#e6f4ed;  --kn-b:#3e9b6b;
+    --fu:#fbf1e0;  --fu-b:#c08a2e;
+    --rt:#eeebfb;  --rt-b:#6b5fc4;
+    --cp:#f2f3f5;  --cp-b:#9aa3b2;
+    --ob:#f7f3e7;  --ob-b:#b39b54;
+    --warn:#c0564a;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:28px 22px 60px;
+    background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei","PingFang SC",sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:1280px;margin:0 auto}
+
+  header.top{margin-bottom:18px}
+  header.top h1{font-size:20px;margin:0 0 6px;letter-spacing:.2px}
+  header.top p{margin:0;font-size:12.5px;color:var(--ink-3);line-height:1.7}
+  header.top code{background:#e9ecf1;padding:1px 5px;border-radius:3px;font-size:11.5px}
+
+  /* 图例 */
+  .legend{
+    display:flex;flex-wrap:wrap;gap:18px;align-items:center;
+    background:var(--paper);border:1px solid var(--line);border-radius:10px;
+    padding:10px 16px;margin:14px 0 22px;font-size:12px;color:var(--ink-2);
+  }
+  .legend b{font-weight:600;color:var(--ink)}
+  .lg{display:flex;align-items:center;gap:7px}
+  .lg .s{width:34px;height:0;border-top:2px solid #8a93a6;position:relative}
+  .lg .s::after{content:"";position:absolute;right:-4px;top:-4px;border-left:7px solid #8a93a6;border-top:3.5px solid transparent;border-bottom:3.5px solid transparent}
+  .lg .d{width:34px;height:0;border-top:2px dashed #8a93a6;position:relative}
+  .lg .d::before{content:"";position:absolute;left:-4px;top:-4px;border-right:7px solid #8a93a6;border-top:3.5px solid transparent;border-bottom:3.5px solid transparent}
+  .lg .d::after{content:"";position:absolute;right:-4px;top:-4px;border-left:7px solid #8a93a6;border-top:3.5px solid transparent;border-bottom:3.5px solid transparent}
+  .lg .r{width:34px;height:0;border-top:2px solid var(--warn);position:relative}
+  .lg .r::after{content:"";position:absolute;right:-4px;top:-4px;border-left:7px solid var(--warn);border-top:3.5px solid transparent;border-bottom:3.5px solid transparent}
+
+  /* 层 */
+  .layer{
+    display:flex;gap:14px;margin:0;
+    background:var(--paper);border:1px solid var(--line);border-radius:12px;
+    padding:14px 16px 16px;
+  }
+  .rail{
+    flex:0 0 42px;display:flex;flex-direction:column;align-items:center;
+    border-right:1px dashed var(--line);padding-right:0;
+  }
+  .rail .num{
+    font-size:13px;font-weight:700;color:#fff;background:#8f9bb0;
+    width:24px;height:24px;border-radius:50%;display:grid;place-items:center;
+  }
+  .rail .name{
+    writing-mode:vertical-rl;text-orientation:upright;letter-spacing:3px;
+    font-size:12px;color:var(--ink-3);margin-top:10px;font-weight:600;
+  }
+  .body{flex:1;min-width:0}
+
+  .layer-head{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+  .layer-head .t{font-size:13.5px;font-weight:700}
+  .layer-head .d{font-size:11.5px;color:var(--ink-3)}
+  .layer-head .k{
+    margin-left:auto;font-size:10.5px;color:#8a5a17;background:#fdf3e3;
+    border:1px solid #efd9b4;border-radius:20px;padding:2px 9px;white-space:nowrap;
+  }
+
+  /* 卡片 */
+  .cards{display:grid;gap:10px}
+  .c2{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .c3{grid-template-columns:repeat(auto-fit,minmax(252px,1fr))}
+  .c4{grid-template-columns:repeat(auto-fit,minmax(200px,1fr))}
+
+  .card{
+    border:1px solid var(--line);border-radius:9px;padding:9px 11px 10px;
+    background:#fff;border-left:3px solid #c9d2e0;
+  }
+  .card .h{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .card .n{font-size:12.5px;font-weight:700;letter-spacing:.1px}
+  .card .m{font-size:11px;color:var(--ink-3);font-family:ui-monospace,Menlo,Consolas,monospace}
+  .card .u{font-size:11.5px;color:var(--ink-2);line-height:1.62;margin-top:4px}
+  .card .u::before{content:"【作用】";color:#9aa3b2}
+  .chip{
+    font-size:10px;line-height:1.5;padding:1px 6px;border-radius:4px;
+    background:#fdecea;color:#a4402f;border:1px solid #f3c8c1;white-space:nowrap;
+  }
+  .chip.g{background:#eaf6ef;color:#2f7d54;border-color:#c6e5d4}
+  .chip.b{background:#eef2fb;color:#3f5f9e;border-color:#cfdaf2}
+
+  /* 层配色 */
+  .l-acc{border-color:#cfe0f2} .l-acc .rail .num{background:var(--acc-b)} .l-acc .card{border-left-color:var(--acc-b)}
+  .l-gw {border-color:#cfe0f2} .l-gw  .rail .num{background:var(--gw-b)}  .l-gw  .card{border-left-color:var(--gw-b)}
+  .l-kn {border-color:#cbe7d9} .l-kn  .rail .num{background:var(--kn-b)}  .l-kn  .card{border-left-color:var(--kn-b)}
+  .l-fu {border-color:#eedcbb} .l-fu  .rail .num{background:var(--fu-b)}  .l-fu  .card{border-left-color:var(--fu-b)}
+  .l-rt {border-color:#d8d3f3} .l-rt  .rail .num{background:var(--rt-b)}  .l-rt  .card{border-left-color:var(--rt-b)}
+  .l-cp {border-color:#dcdfe6} .l-cp  .rail .num{background:var(--cp-b)}  .l-cp  .card{border-left-color:var(--cp-b)}
+  .l-ob {border-color:#e6ddc0} .l-ob  .rail .num{background:var(--ob-b)}  .l-ob  .card{border-left-color:var(--ob-b)}
+
+  .panel{
+    border:1px dashed #cfd6e2;border-radius:10px;padding:10px 12px 12px;background:#fcfcfd;
+  }
+  .panel .pt{font-size:12px;font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+  .panel .pt .port{
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;color:#fff;
+    background:#8f9bb0;border-radius:4px;padding:1px 6px;font-weight:500;
+  }
+  .panel.kn{border-color:#bfe3d1;background:#fbfefc} .panel.kn .pt .port{background:var(--kn-b)}
+  .panel.fu{border-color:#eed7b0;background:#fffdf8} .panel.fu .pt .port{background:var(--fu-b)}
+
+  .two{display:grid;grid-template-columns:1fr 116px 1fr;gap:8px;align-items:start}
+  .a2a{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;
+    color:#a4402f;font-size:10.5px;text-align:center;line-height:1.4;padding:0 2px;
+  }
+  .a2a .bar{border-top:2px dashed var(--warn);width:100%;position:relative}
+  .a2a .bar::before,.a2a .bar::after{
+    content:"";position:absolute;top:-4px;border-top:3.5px solid transparent;border-bottom:3.5px solid transparent;
+  }
+  .a2a .bar::before{left:-1px;border-right:7px solid var(--warn)}
+  .a2a .bar::after{right:-1px;border-left:7px solid var(--warn)}
+
+  /* 连接线 */
+  .conn{display:flex;flex-direction:column;align-items:center;margin:0;height:38px;position:relative}
+  .conn .v{width:0;height:24px;border-left:2px solid #98a2b3;position:relative}
+  .conn .v::after{
+    content:"";position:absolute;left:-4.5px;bottom:-7px;
+    border-top:8px solid #98a2b3;border-left:4.5px solid transparent;border-right:4.5px solid transparent;
+  }
+  .conn.dash .v{border-left-style:dashed}
+  .conn .lab{
+    font-size:10.5px;color:var(--ink-3);white-space:nowrap;
+    position:absolute;left:calc(50% + 14px);top:1px;
+  }
+  .card code{background:#eef0f4;padding:0 3px;border-radius:3px;font-size:10.5px;font-family:ui-monospace,Menlo,Consolas,monospace}
+
+  /* 回流标注 */
+  .ret{
+    display:flex;justify-content:center;margin:2px 0 0;
+    font-size:10.5px;color:var(--warn);
+  }
+  .ret span{border:1px dashed #e3b6ad;background:#fdf1ef;border-radius:20px;padding:2px 10px}
+
+  /* 约束区 */
+  section.notes{margin-top:26px;display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px}
+  .note{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .note h3{margin:0 0 9px;font-size:13px;letter-spacing:.2px}
+  .note ul{margin:0;padding-left:16px}
+  .note li{font-size:11.8px;color:var(--ink-2);line-height:1.85}
+  .note li b{color:var(--ink)}
+  .note code{background:#eef0f4;padding:0 4px;border-radius:3px;font-size:11px}
+  .foot{margin-top:22px;font-size:11px;color:var(--ink-3);text-align:center}
+
+  @media print{
+    body{background:#fff;padding:0}
+    .layer,.note{break-inside:avoid}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <h1>Agent 分层与协作链路 · 细化视图</h1>
+    <p>
+      自上而下为请求流转方向；每个方框拆到子组件级并标注作用。组件名与
+      <code>agent-service/</code>、<code>java-service/</code> 中的实际模块一致，出处见 <code>docs/18-架构分层与协作链路-细化视图.md</code>。
+    </p>
+  </header>
+
+  <div class="legend">
+    <span><b>线型语义</b></span>
+    <div class="lg"><i class="s"></i>同步调用（阻塞等待）</div>
+    <div class="lg"><i class="d"></i>异步 / A2A 委派（不共享调用栈）</div>
+    <div class="lg"><i class="r"></i>回流（事件、证据、降级标记向上）</div>
+    <div class="lg" style="margin-left:auto;color:#a4402f">图中不存在反向实线：Python 永不主动调 Java</div>
+  </div>
+
+  <!-- ① 接入层 -->
+  <div class="layer l-acc">
+    <div class="rail"><div class="num">1</div><div class="name">接入层</div></div>
+    <div class="body">
+      <div class="layer-head">
+        <span class="t">接入层</span>
+        <span class="d">只消费 SSE，不参与任何决策</span>
+        <span class="k">不解析引用编号：正文带 eid 占位符，编号由前端按 citations[] 渲染</span>
+      </div>
+      <div class="cards c2">
+        <div class="card">
+          <div class="h"><span class="n">web 演示页</span><span class="m">index.html / app.js / styles.css</span></div>
+          <div class="u">消费 SSE 流；按 <code>citations[]</code> 渲染引用骨架并跳转页码；展示 TOC 与 <code>degraded[]</code> 提示。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">业务前端</span><span class="m">知识问答页 / 排障工单页</span></div>
+          <div class="u">发起提问；展示诊断推进过程（progress / evidence）；承接审批与补充信息弹窗。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="conn"><span class="lab">HTTP + SSE</span><div class="v"></div></div>
+
+  <!-- ② 网关层 -->
+  <div class="layer l-gw">
+    <div class="rail"><div class="num">2</div><div class="name">网关层</div></div>
+    <div class="body">
+      <div class="layer-head">
+        <span class="t">业务网关 · java-service</span>
+        <span class="d">Spring Boot，49 个 Java 文件</span>
+        <span class="k">权限的唯一计算点：Python 不查权限表，只接受已收敛属性</span>
+      </div>
+      <div class="cards c3">
+        <div class="card">
+          <div class="h"><span class="n">contract/（codegen DTO）</span><span class="chip b">契约</span></div>
+          <div class="m">AnswerRequest / Task / 8 类事件 / SubjectContext</div>
+          <div class="u">由 <code>api/openapi.yaml</code> 生成，两端都不手写 DTO，从根上杜绝字段漂移。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">KnowledgeGatewayController</span></div>
+          <div class="m">POST /v1/knowledge/answers</div>
+          <div class="u">知识问答入口，返回 <code>text/event-stream</code>；透传已注入主体的 <code>subject_ctx</code>。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">FulfillmentGatewayController</span></div>
+          <div class="m">POST /tasks · GET /{id} · /resume · /cancel</div>
+          <div class="u">排障诊断入口；维护 Task 生命周期、幂等 resume 与 TTL 清理。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">acl/SubjectResolver</span><span class="chip">安全</span></div>
+          <div class="m">→ InMemorySubjectResolver</div>
+          <div class="u">把部门树 / 角色 / 共享组 / 审批单收敛成 <code>subject_ctx</code>；<code>account_status</code> 一票否决。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">gateway/AgentGateway</span><span class="chip">契约</span></div>
+          <div class="m">→ WebClientAgentGateway</div>
+          <div class="u">转发、预算、重试、取消的唯一实现处：带 <code>X-Deadline-Ms</code> 剩余预算、<code>Idempotency-Key</code>；只在首帧前重试；断连即取消上游。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">UploadController + LocalUploadService</span></div>
+          <div class="m">/v1/upload</div>
+          <div class="u">原件落盘、触发解析与入库（M0 本地实现，后续替换为对象存储直传）。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">会话 / 配额 / 审批 / 审计</span></div>
+          <div class="m">chat_turn · 待办 · 计数</div>
+          <div class="u">落 <code>chat_turn(status, usage, finish_reason)</code>；动作审批待办；<code>INJECTION_BLOCKED</code> 单独计数，不混进 5xx 错误率。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="conn"><span class="lab">REST + SSE（knowledge） / REST + SSE + Task（fulfillment）</span><div class="v"></div></div>
+  <div class="ret"><span>↑ 回流：meta → citation → delta → done ｜ progress / evidence / input_required</span></div>
+
+  <!-- ③ 域层 -->
+  <div class="layer l-kn" style="margin-top:10px">
+    <div class="rail"><div class="num">3</div><div class="name">域层</div></div>
+    <div class="body">
+      <div class="layer-head">
+        <span class="t">域层 · 唯一的业务语义所在地</span>
+        <span class="d">两域共用同一镜像、同一 Runtime，差异全落在 domain.yaml</span>
+        <span class="k">唯一横向边：A2A 双向，必须携带 scope.chain</span>
+      </div>
+
+      <div class="two">
+        <!-- knowledge -->
+        <div class="panel kn">
+          <div class="pt">knowledge <span class="port">:8001</span> 无状态 · 一请求一条流</div>
+          <div class="cards" style="grid-template-columns:1fr">
+            <div class="card">
+              <div class="h"><span class="n">api/app_knowledge.py</span><span class="chip">契约</span></div>
+              <div class="u">建流前预检四步：契约版本 → 主体红线 → 注入检测 → 图白名单。回了 200 就没有 4xx 的机会。</div>
+            </div>
+            <div class="card">
+              <div class="h"><span class="n">Agentic RAG 图（9 节点）</span></div>
+              <div class="m">analyze_intent → plan → retrieve → grade ⇄ rewrite → synthesize → verify → abstain</div>
+              <div class="u">广度检索 + 早停；改写回环最多 2 轮；<code>abstain</code> 独立成节点，拒答是正常路径。</div>
+            </div>
+            <div class="card">
+              <div class="h"><span class="n">工具 hybrid_retrieve / doc_fetch</span><span class="chip g">只读</span></div>
+              <div class="u">唯一数据入口；工具实现不接受 subject 参数，权限不经参数泄漏。</div>
+            </div>
+            <div class="card">
+              <div class="h"><span class="n">delegate（A2A 委派节点）</span></div>
+              <div class="u">问句含订单号时把诊断外包给 fulfillment；当前仅 <code>graph_pipeline</code> 引用，agentic 主图未接。</div>
+            </div>
+            <div class="card">
+              <div class="h"><span class="n">api/sse.py · replay.py · schemas.py</span></div>
+              <div class="u">帧编码 + 15s 心跳 + Channel 回压；幂等命中重放整条流（含 meta）；pydantic <code>extra="forbid"</code>。</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- A2A -->
+        <div class="a2a">
+          <div style="font-weight:700;font-size:11px">A2A 委派</div>
+          <div>最小 scope</div>
+          <div class="bar"></div>
+          <div>chain 防环</div>
+          <div style="font-size:10px;color:#7d8698">跳数 ≤ 2</div>
+        </div>
+
+        <!-- fulfillment -->
+        <div class="panel fu">
+          <div class="pt">fulfillment <span class="port">:8002</span> 有状态 Task · resume / cancel</div>
+          <div class="cards" style="grid-template-columns:1fr">
+            <div class="card">
+              <div class="h"><span class="n">api/app_fulfillment.py</span><span class="chip">契约</span></div>
+              <div class="u">Task 状态机 <code>submitted → working → (input_required) → completed/failed/canceled</code>；resume 用 <code>Command(resume=)</code>，不是重发 inputs。</div>
+            </div>
+            <div class="card">
+              <div class="h"><span class="n">假设验证图（10 节点）</span></div>
+              <div class="m">analyze_symptom → clarify ⟂ → hypotheses ⇄ gather/refine → evaluate → compose → propose → approve ⟂</div>
+              <div class="u">深度取证 + 允许证伪；<code>clarify</code> / <code>human_approve</code> 两个 interrupt 让流关闭、连接不再被占用。</div>
+            </div>
+            <div class="card">
+              <div class="h"><span class="n">工具 9 个</span><span class="chip g">只读</span><span class="chip b">写=提议</span></div>
+              <div class="m">订单 / 库存 / 物流 / 支付 / 日志 / 指标 / 规则 / 动作 / ask_knowledge</div>
+              <div class="u">查询走 <code>sqlguard</code> 只读白名单；写操作只 <code>propose_action</code>，执行永远走 Java 审批。</div>
+            </div>
+            <div class="card">
+              <div class="h"><span class="n">checkpointer</span></div>
+              <div class="m">PostgresSaver / InMemorySaver</div>
+              <div class="u">checkpoint 落在 interrupt 之前，断流后仍能唤醒；断流 ≠ 失败。</div>
+            </div>
+            <div class="card">
+              <div class="h"><span class="n">Task 幂等与 TTL</span><span class="chip">契约</span></div>
+              <div class="m">409 DUPLICATE_INFLIGHT / TASK_STATE_CONFLICT</div>
+              <div class="u">同一幂等键在跑 → 让其重连原流；状态不允许 resume → 409；过期 Task 走 TTL 清理。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="conn"><span class="lab">节点只能走 GraphBuilder.node()</span><div class="v"></div></div>
+
+  <!-- ④ Runtime -->
+  <div class="layer l-rt">
+    <div class="rail"><div class="num">4</div><div class="name">内核层</div></div>
+    <div class="body">
+      <div class="layer-head">
+        <span class="t">Runtime 内核 · runtime/</span>
+        <span class="d">约 3110 行；编排用 LangGraph，约束层自研</span>
+        <span class="k">域无关：源码里出现域名，test_domain_isolation 直接失败</span>
+      </div>
+      <div class="cards c3">
+        <div class="card">
+          <div class="h"><span class="n">graph.py · GraphBuilder / run()</span><span class="chip">闸门</span></div>
+          <div class="u">StateGraph 门面 + 节点唯一包装：<code>enter_node</code> 计步与预算 → span → <code>fn(state, rt)</code>；<code>GraphBubbleUp</code> 原样上抛。不暴露 <code>add_node</code>。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">events.py · Ledger</span><span class="chip">预算</span></div>
+          <div class="u">步数 / token / 成本 / 截止时间四限，任一超限在<b>节点边界</b>硬停，不是节点跑到一半。<code>on_budget</code> 决定 abstain 还是 escalate。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">events.py · EventSink</span><span class="chip">契约</span></div>
+          <div class="u">SSE 唯一出口与状态机：<code>citation</code> 不得晚于 <code>delta</code>、<code>eid</code> 必须发出过、<code>done</code>/<code>error</code> 用 <code>_terminal_once</code> 保证唯一、<code>close()</code> 未终态直接抛。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">registry.py · ToolRegistry</span><span class="chip">治理</span></div>
+          <div class="u">schema 校验 · 线程池超时（3s / 10s 分级）· <code>copy_context</code> · 超 1500 字符立即压缩。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">guard.py · Guard</span><span class="chip">安全</span></div>
+          <div class="u">注入检测（入）· 输出脱敏（出，切点避开数字与 @）· 动作白名单（写的是动作类型，不是工具名）· <code>risk_of()</code> 分级。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">memory.py</span></div>
+          <div class="u">工作记忆（窗口）/ 语义（用户偏好，接口已留）/ 情景（成功工单，按域隔离）。M0 为词面打分，不是向量检索。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">prompts.py · PromptLibrary</span></div>
+          <div class="u">manifest 登记制（缺登记启动即失败）+ 模板/渲染双 sha，sha 进 <code>meta.prompt_set_sha</code>，trace 可回溯到具体版本文本。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">llm.py · LLMProvider</span></div>
+          <div class="u">直连 OpenAI 兼容协议、重试退避、尾帧 usage 回填账本；online 缺 key 时<b>宁可起不来也不回落 mock</b>。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">config.py · DomainPack</span><span class="chip">启动校验</span></div>
+          <div class="u">domain.yaml 强类型加载 + 启动期三查：<code>graph</code> == 模块 <code>NAME</code>、<code>tools</code> 全注册、<code>prompts</code> 全可加载。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">sqlguard.py</span><span class="chip g">只读</span></div>
+          <div class="u">只读 SQL 白名单、语法与对象检查、强制 LIMIT、<code>mask_rows</code> 行级脱敏。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">tracing.py</span></div>
+          <div class="u">OTel 薄封装 + <code>span_tree()</code> 自检；节点漏埋 span 会导致 trace 断链、归因失效。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">errors.py</span></div>
+          <div class="u"><code>KwError</code> / <code>BudgetStop</code> / <code>ContractViolation</code> / <code>DegradedEnum</code>：降级只有一个入口，不允许各处静默吞。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="conn"><span class="lab">registry.call() / 只读依赖</span><div class="v"></div></div>
+
+  <!-- ⑤ 能力层 -->
+  <div class="layer l-cp">
+    <div class="rail"><div class="num">5</div><div class="name">能力层</div></div>
+    <div class="body">
+      <div class="layer-head">
+        <span class="t">能力层</span>
+        <span class="d">无状态，可被任一域复用；不含业务语义</span>
+        <span class="k">权限在检索之前：permitted CTE 与排序同一条 SQL</span>
+      </div>
+      <div class="cards c4">
+        <div class="card">
+          <div class="h"><span class="n">parse/ 解析</span></div>
+          <div class="m">pipeline · router · engines · ir · chunker</div>
+          <div class="u">按页路由 L0 直取 / Docling / MinerU，统一 IR 后做语义分块与父子块（子块检索、父块喂模型）。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">retrieval/ 检索</span><span class="chip g">ACL 下推</span></div>
+          <div class="m">pg_retriever · embed · rerank · memory_retriever</div>
+          <div class="u">dense(BGE-M3) + BM25 双路 → RRF 融合；rerank 可选，超时记 <code>degraded</code> 但流照常 done。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">a2a/ 跨域协议</span><span class="chip">唯一横向</span></div>
+          <div class="m">client · server · types</div>
+          <div class="u">Agent Card 发现 + JSON-RPC；出站追加本域到 <code>chain</code>，服务端在 handler 之前拒绝回环。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">api/ 通用件</span></div>
+          <div class="m">sse · replay · schemas</div>
+          <div class="u">帧编码与回压、幂等重放、契约模型；被两个域入口共用，避免两份实现漂移。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="conn"><span class="lab">读 / 写（Python 对业务库只读）</span><div class="v"></div></div>
+
+  <!-- ⑥ 底座 -->
+  <div class="layer l-cp">
+    <div class="rail"><div class="num">6</div><div class="name">底座</div></div>
+    <div class="body">
+      <div class="layer-head">
+        <span class="t">底座</span>
+        <span class="d">读写分离：读模型在 PG，业务真相在 MySQL</span>
+        <span class="k">Python 侧永不写业务库：写操作只提议，执行走 Java 审批</span>
+      </div>
+      <div class="cards c4">
+        <div class="card">
+          <div class="h"><span class="n">PostgreSQL 读模型</span></div>
+          <div class="m">kb_chunk · kb_doc_mirror · checkpoint · memory</div>
+          <div class="u">带 ACL 快照的检索单元；<code>pg_search</code> 中文分词索引；checkpoint 支撑 resume。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">MySQL 业务真相</span><span class="chip g">只读</span></div>
+          <div class="m">订单 · 库存 · 物流 · 支付</div>
+          <div class="u">权限由静态共享 / 动态共享 / 审批单共同决定，判定在 Java 与知识域，排障域不直读文档库。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">MinIO 原件</span></div>
+          <div class="u">PDF / Word / Markdown 原始文件；引用可回溯到具体页，解析失败可重跑。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">模型服务</span></div>
+          <div class="m">models.yaml · 线上 API / mock</div>
+          <div class="u">角色（analyze / generate / classify）→ provider/model 映射 + 计价表；调用成本入账本。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="conn dash"><span class="lab">埋点（不阻塞主链路）</span><div class="v"></div></div>
+
+  <!-- ⑦ 观测 -->
+  <div class="layer l-ob">
+    <div class="rail"><div class="num">7</div><div class="name">观测层</div></div>
+    <div class="body">
+      <div class="layer-head">
+        <span class="t">观测层</span>
+        <span class="d">OTel → Langfuse / OTLP</span>
+        <span class="k">_debug/trace/{trace_id} 不依赖 collector，本地即可看 span 树</span>
+      </div>
+      <div class="cards c3">
+        <div class="card">
+          <div class="h"><span class="n">trace 归因</span></div>
+          <div class="u">节点级 span + <code>trace_id</code> 贯穿 Java 与 Python；错误帧必须带 <code>trace_id</code>。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">成本与预算观测</span></div>
+          <div class="u">每轮 <code>usage{tokens, cost_usd}</code> 落账本并落库；成本异常先看角色映射与计价表。</div>
+        </div>
+        <div class="card">
+          <div class="h"><span class="n">安全与降级计数</span></div>
+          <div class="u"><code>INJECTION_BLOCKED</code> 与 <code>degraded[]</code> 单独计数，不与 5xx 混算。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section class="notes">
+    <div class="note">
+      <h3>五条不变量（可直接当验收标准）</h3>
+      <ul>
+        <li><b>1 权限在检索之前</b> — <code>permitted</code> CTE 与排序同一条 SQL</li>
+        <li><b>2 引用先于正文</b> — <code>sink.citation</code> 检查 <code>_delta_started</code></li>
+        <li><b>3 终止事件唯一</b> — <code>_terminal_once</code> + <code>close()</code></li>
+        <li><b>4 预算在节点边界</b> — <code>Ledger.enter_node()</code></li>
+        <li><b>5 域隔离</b> — <code>test_domain_isolation.py</code> 扫源码</li>
+      </ul>
+    </div>
+    <div class="note">
+      <h3>跨层约束的机器守卫</h3>
+      <ul>
+        <li>契约里不存在文档清单 — pydantic <code>extra="forbid"</code></li>
+        <li>动作白名单写动作类型 — <code>test_guard.py</code></li>
+        <li>已交付不可反悔（abstained → degraded）— <code>test_finish_reason.py</code></li>
+        <li>启动期三查 — <code>runtime/config.py</code>，不符就起不来</li>
+        <li>online 缺 key 不回落 mock — <code>llm.build_provider</code></li>
+      </ul>
+    </div>
+    <div class="note">
+      <h3>三处要与"已实现"区分开</h3>
+      <ul>
+        <li><b>语义记忆</b>：配置开了，但没有 <code>rt.recall("semantic")</code> 消费者</li>
+        <li><b>图谱扩展</b>：<code>graph_expand</code> / Neo4j 第三路未实现，只有 dense + BM25 + RRF</li>
+        <li><b>A2A 委派</b>：通道双向已通，但 knowledge → fulfillment 仅挂在 <code>graph_pipeline</code></li>
+      </ul>
+    </div>
+  </section>
+
+  <div class="foot">对应文档：docs/18-架构分层与协作链路-细化视图.md（Mermaid 源）· docs/17-架构总览与代码地图.md（代码树）</div>
+</div>
+</body>
+</html>

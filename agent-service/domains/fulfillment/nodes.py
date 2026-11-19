@@ -25,6 +25,10 @@ from runtime.guard import risk_of
 
 _SENTENCE = re.compile(r"(?<=[。；！？\n])")
 
+#: 订单号格式：O 开头 + 11 位数字。与 tools.py 里每个取证工具的 input_schema.pattern 一致。
+#: 格式不对时取证工具会因 schema 校验失败而查不到数据（not_found），整条诊断链空转。
+_ORDER_ID_RE = re.compile(r"^O[0-9]{11}$")
+
 
 def _json_obj(text: str) -> dict[str, Any]:
     cleaned = text.strip()
@@ -66,14 +70,20 @@ def clarify(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
     这个节点只做一件事：interrupt + 合并答案。resume 重放它不会有副作用。
     """
     fields = dict(state.get("fields") or {})
-    missing = [k for k in ("order_id",) if not fields.get(k)]
-    if not missing:
+    oid = str(fields.get("order_id") or "").strip()
+    # 空：缺字段；非空但格式不对：模型从症状里抽出的订单号不满足 O+11 位数字。
+    # 两种情况都要追问，不能带病进取证（取证工具 schema 校验失败 = 全链空转）。
+    if not oid:
+        question = "请补充订单号（形如 O20261102001），否则无法定位履约链路。"
+    elif not _ORDER_ID_RE.match(oid):
+        question = f"订单号「{oid}」格式不正确（应为 O 开头 + 11 位数字，如 O20261102001），请核对后重发。"
+    else:
         return {"fields": fields}
 
     answer = interrupt(
         {
             "kind": "clarification",
-            "question": "请补充订单号（形如 O20261102001），否则无法定位履约链路。",
+            "question": question,
             "schema": {
                 "type": "object",
                 "properties": {"order_id": {"type": "string", "pattern": "^O[0-9]{11}$"}},
@@ -110,12 +120,16 @@ def build_hypotheses(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
 #: 不会报错，只会让 evaluate 把所有假设判成 irrelevant，最后整单转人工。
 #: 那种故障看起来像"模型不会排障"，实际是名字没对上。
 _CHECKS: dict[str, Callable[..., Any]] = {
-    "lookup_order": lambda rt, oid: rt.tool("lookup_order", order_id=oid),
-    "inventory_snapshot": lambda rt, oid: rt.tool("inventory_snapshot", order_id=oid),
-    "shipment_track": lambda rt, oid: rt.tool("shipment_track", order_id=oid),
-    "payment_flow": lambda rt, oid: rt.tool("payment_flow", order_id=oid),
-    "search_op_logs": lambda rt, oid: rt.tool("search_op_logs", order_id=oid),
-    "check_rule": lambda rt, oid: rt.tool("check_rule", rule_id="compensation_v2"),
+    "lookup_order": lambda rt, oid, sym: rt.tool("lookup_order", order_id=oid),
+    "inventory_snapshot": lambda rt, oid, sym: rt.tool("inventory_snapshot", order_id=oid),
+    "shipment_track": lambda rt, oid, sym: rt.tool("shipment_track", order_id=oid),
+    "payment_flow": lambda rt, oid, sym: rt.tool("payment_flow", order_id=oid),
+    "search_op_logs": lambda rt, oid, sym: rt.tool("search_op_logs", order_id=oid),
+    "check_rule": lambda rt, oid, sym: rt.tool("check_rule", rule_id="compensation_v2"),
+    # 唯一一条跨域证据：制度/条款原文在知识域的文档库里，本域只有规则触发条件。
+    # 问题由症状拼出来而不是让模型自己写——模型写出来的问句常常丢订单场景，
+    # 而条款是否适用恰恰取决于场景（时效类 vs 赔付类）。
+    "ask_knowledge": lambda rt, oid, sym: rt.tool("ask_knowledge", question=_policy_question(sym, oid)),
 }
 
 _CHECKS_ALIAS: dict[str, str] = {
@@ -125,7 +139,28 @@ _CHECKS_ALIAS: dict[str, str] = {
     "支付": "payment_flow", "流水": "payment_flow", "支付流水": "payment_flow",
     "日志": "search_op_logs", "搜日志": "search_op_logs", "操作日志": "search_op_logs",
     "规则": "check_rule", "查规则": "check_rule", "规则库": "check_rule",
+    "知识库": "ask_knowledge", "查知识库": "ask_knowledge", "制度": "ask_knowledge",
+    "条款": "ask_knowledge", "查条款": "ask_knowledge", "政策": "ask_knowledge",
 }
+
+
+def _policy_question(symptom: str, order_id: str) -> str:
+    text = (symptom or "").strip() or f"订单 {order_id} 出现履约异常"
+    return f"{text}。这类情况的赔付与处理条款是怎么规定的？"
+
+
+#: 处置依据类的信号词：出现这些，说明用户问的不只是"为什么卡住"，还有"该怎么处置"。
+#:
+#: 为什么不做成 checks：`checks` 的语义是"验证某个根因假设成不成立"，而
+#: "条款怎么规定"不针对任何根因——实测 online 模型即使被 prompt 明确要求
+#: （build_hypotheses v3 第 33 行），也不会把 ask_knowledge 绑进任何一个假设，
+#: 因为语义上它确实不属于"某条根因的验证手段"。
+#: 所以这条做成**与症状挂钩的必查项**，而不是与假设挂钩。
+_POLICY_SIGNALS = ("赔付", "赔偿", "该不该赔", "赔多少", "条款", "制度", "政策")
+
+#: 制度依据的桶名。用它而不是塞进某个 hypothesis id：这份证据是订单级的，
+#: evaluate 会对每个假设都带上（条款是否适用不因根因不同而变）。
+_POLICY_BUCKET = "__policy__"
 
 
 def _resolve_check(raw: str) -> str:
@@ -141,6 +176,11 @@ def _resolve_check(raw: str) -> str:
 def gather_evidence(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
     fields = state.get("fields") or {}
     order_id = fields.get("order_id")
+    symptom = str(state.get("symptom_norm") or state.get("symptom") or "")
+    # 处置诉求的判断要看**原始**症状：analyze_symptom 会把现象压成短标签
+    # （"物流停滞，客户要求赔付" → 环节 delivery + 现象"物流停滞"），
+    # "赔付/制度"这类词在归一过程中就没了，只查 symptom_norm 会永远不触发。
+    raw_symptom = str(state.get("symptom") or "")
     collected: dict[str, list[dict[str, Any]]] = {}
     unknown: list[str] = []
 
@@ -160,7 +200,7 @@ def gather_evidence(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
             if fn is None:
                 unknown.append(str(raw))
                 continue
-            result = fn(rt, order_id)
+            result = fn(rt, order_id, symptom)
             resolved.append(name)
             rows.append(
                 {
@@ -173,6 +213,20 @@ def gather_evidence(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
             rows.insert(0, {"tool": "search_op_logs", "ok": True,
                             "summary": baseline.summary, "note": "订单级基线证据（节点兜底拉取）"})
         collected[str(hypothesis["id"])] = rows
+
+    # 处置依据（订单级，不挂任何假设）：客户主张赔付时，不查制度原文就只能凭印象，
+    # 而三张订单表里没有"该赔多少"。拿不到不算故障——`ask_knowledge` 自己会把
+    # reason 写进结果（未配置 / 弃答 / 不可达），模型据此知道"依据缺失"而不是"没有规定"。
+    if any(sig in f"{raw_symptom} {symptom}" for sig in _POLICY_SIGNALS):
+        policy = rt.tool("ask_knowledge", question=_policy_question(raw_symptom or symptom, order_id))
+        collected[_POLICY_BUCKET] = [
+            {
+                "tool": "ask_knowledge",
+                "ok": policy.ok,
+                "summary": policy.summary or (policy.error or ""),
+                "note": "制度原文（处置依据，非根因验证）",
+            }
+        ]
 
     note = f"按假设取证完成：{sum(len(v) for v in collected.values())} 条证据"
     if unknown:
@@ -188,9 +242,16 @@ def evaluate(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
     evidence_map = state.get("evidence_map") or {}
     verdicts: dict[str, dict[str, Any]] = {}
 
+    # 制度依据对所有假设都成立（条款是否适用不因根因不同而变），所以拼在每个
+    # 假设的证据后面，而不是只给某一条。少了它，模型会在"规则误判"上凭印象下判断。
+    policy_rows = evidence_map.get(_POLICY_BUCKET) or []
+    policy_text = "\n".join(f"- {r['tool']}: {r['summary']}" for r in policy_rows)
+
     for hypothesis in hypotheses:
         rows = evidence_map.get(str(hypothesis["id"])) or []
         text = "\n".join(f"- {r['tool']}: {r['summary']}" for r in rows) or "（无取证结果）"
+        if policy_text:
+            text += f"\n\n制度依据（订单级，适用于所有假设）：\n{policy_text}"
         raw = rt.llm_call(
             "fulfillment.evaluate",
             hypothesis=f"{hypothesis.get('root_cause')}（先验 {hypothesis.get('prior')}）",
@@ -239,10 +300,25 @@ def compose_diagnosis(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
     for hid, item in verdicts.items():
         lines.append(f"假设 {hid}（{item.get('root_cause')}）：{item['verdict']}，{item.get('reason')}")
 
+    root_cause = str(state.get("root_cause") or "")
+    # 兜底：0 条 support（root_cause 为空）时，最常见原因就是订单号查无此单（取证工具全 not_found）。
+    # 此时不该让模型空转出一段"无法定位"的废话，直接给明确结论，避免"0 支持 0 反驳、无下文"。
+    if not root_cause:
+        fields = state.get("fields") or {}
+        oid = fields.get("order_id") or "（缺失）"
+        text = (
+            f"未定位到订单 {oid} 的履约记录，无法给出诊断结论。\n\n"
+            f"可能原因：订单号有误、订单尚未进入履约链路，或该单不在当前数据范围内。"
+            f"建议先核对订单号后重新发起排障。"
+        )
+        text = rt.guard.desensitize(text)
+        _emit_text(rt, text)
+        return {"diagnosis": text, "finish_reason": "abstained", "stop_reason": "order_not_found"}
+
     text = rt.llm_call(
         "fulfillment.compose_diagnosis",
         symptom=state.get("symptom_norm") or state.get("symptom", ""),
-        root_cause=str(state.get("root_cause") or "未确认"),
+        root_cause=root_cause,
         evidence="\n".join(lines) or "（无）",
     )
     text = rt.guard.desensitize(text)

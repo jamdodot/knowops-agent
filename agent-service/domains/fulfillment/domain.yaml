@@ -8,7 +8,10 @@ version: 1
 entry: api/main_fulfillment.py
 graph: fulfillment_diagnosis
 
-tools: [lookup_order, inventory_snapshot, shipment_track, payment_flow, search_op_logs, query_metric, check_rule, propose_action]
+# ask_knowledge 是唯一一条跨域工具：制度/条款原文在知识域的文档库里。
+# 它走 A2A（需要 KW_A2A_KNOWLEDGE_URL），未配置时工具返回 available=false 而不是报错——
+# 单域启动本来就是合法部署形态。
+tools: [lookup_order, inventory_snapshot, shipment_track, payment_flow, search_op_logs, query_metric, check_rule, ask_knowledge, propose_action]
 
 prompts:
   - fulfillment.analyze_symptom

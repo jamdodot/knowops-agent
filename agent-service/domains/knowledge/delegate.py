@@ -24,6 +24,7 @@ import re
 from typing import Any
 
 from a2a.client import delegate_diagnosis
+from a2a.types import CHAIN_KEY, SOURCE_KNOWLEDGE, may_delegate
 from api.schemas import DegradedEnum
 from runtime import Runtime
 
@@ -42,6 +43,16 @@ def maybe_delegate(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
     if not base_url or not _ORDER_ID.search(query):
         return {}
 
+    # 回环门禁（第三道，前两道在 server 侧与 client 侧）：
+    # 本次请求是排障域经 A2A 发过来的（chain 里已有 fulfillment/knowledge），
+    # 就不能再往排障域发一次。少了这一条，一个"带订单号的条款问题"会
+    # 知识→排障→知识→排障 一直跑到预算耗尽，而 prompt 和图上都看不出异常。
+    chain = list(rt.current().scratch.get("delegation_chain") or [])
+    allowed, why = may_delegate({CHAIN_KEY: chain}, domain=SOURCE_KNOWLEDGE)
+    if not allowed:
+        rt.progress(note=f"跳过委派：{why}（chain={chain}）")
+        return {}
+
     subject = _minimal_subject(rt)
     if subject is None:
         return {}
@@ -49,8 +60,9 @@ def maybe_delegate(state: dict[str, Any], rt: Runtime) -> dict[str, Any]:
     result = delegate_diagnosis(
         query,
         subject=subject,
-        # 最小 scope：只给委派必需的，不把本域的权限清单递过去（docs/13 §8）
-        scope={"source": "knowledge", "with_order": True},
+        # 最小 scope：只给委派必需的，不把本域的权限清单递过去（docs/13 §8）。
+        # 链由 client 统一追加，这里只声明"这一跳的用途"。
+        scope={"source": SOURCE_KNOWLEDGE, "with_order": True},
         base_url=base_url,
     )
 

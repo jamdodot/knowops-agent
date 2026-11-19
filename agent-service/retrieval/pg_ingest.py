@@ -217,8 +217,13 @@ def ingest_path(
     title: str | None = None,
     acl: dict[str, Any] | None = None,
     embed: bool = True,
+    chunk_cfg: Any | None = None,
 ) -> IngestReport:
-    """解析 + 分块 + 写库，单文档。异常收进 report，不打断整批。"""
+    """解析 + 分块 + 写库，单文档。异常收进 report，不打断整批。
+
+    `chunk_cfg`：可选 ChunkConfig（child_size / parent_size / overlap / strategy）。
+    不传则用默认值（docs/03 §4.1）。供上传接口透传用户自定义切片参数。
+    """
     from parse.chunker import ChunkConfig, SemanticChunker
     from parse.pipeline import ParsePipeline
 
@@ -226,7 +231,7 @@ def ingest_path(
     rep = IngestReport(doc_id=did, title=title or path.stem, acl=acl or load_acl(path))
     try:
         doc, _report = ParsePipeline().parse(path, doc_id=did)
-        result = SemanticChunker(ChunkConfig()).chunk(doc)
+        result = SemanticChunker(chunk_cfg or ChunkConfig()).chunk(doc)
         if not result.children:
             rep.error = "分块结果为空（解析质量闸门未通过？）"
             return rep

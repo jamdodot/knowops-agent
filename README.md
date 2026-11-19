@@ -157,7 +157,7 @@ knowops-agent/
 
 **进度（2026-11-05）**：M0/M1 达成；**M2 目标未达成**——198 条双图对照正确率打平、
 tokens ×3，结论是"Agentic 在此语料上无增益"，已据实降级为可选图（`eval/report-v2.md`）；
-**M3 主动不做**（理由见 `docs/15` §5）；M4 最小闭环 + 单向 A2A 已完成（根因 Top-1 83.3%，5 条错判集中在"把症状当根因"这一模式，
+**M3 主动不做**（理由见 `docs/15` §5）；M4 最小闭环 + 双向 A2A 已完成（根因 Top-1 83.3%，5 条错判集中在"把症状当根因"这一模式，
 且 30 条是自造单，别当能力指标读）；M5 评测平台可复现双域、trace 与归因字段齐；
 M6 只到"本地 Compose 可用"，压测与降级演练未做。
 
@@ -183,6 +183,9 @@ M6 只到"本地 Compose 可用"，压测与降级演练未做。
 | `docs/12-Prompt治理.md` | **Prompt 作为一等资产**：三种 hash 分工、变量契约、三档灰度、`config_version` 回滚 |
 | `docs/13-服务间契约.md` | **Java ↔ Python 边界**：`subject_ctx` 透传、SSE 事件协议、超时/幂等/取消、错误码、双向 codegen |
 | `docs/14-Span规范.md` | **可观测**：span 命名与属性、Span Link 处理中断恢复、E1–E10 / F1–F7 逐条归因映射 |
+| `docs/15-后续路线.md` | M1–M6 的推进顺序、每阶段的换型触发条件与验收口径 |
+| `docs/16-语料设计.md` | 48 份评测语料的设计意图、覆盖矩阵与对抗性用例 |
+| `docs/17-架构总览与代码地图.md` | **代码在哪、怎么串、哪些是自研**：分层、真实代码树、Runtime 手写边界、两域图、请求链路、五条不变量、文档与代码偏差 |
 | `api/openapi.yaml` | **契约唯一真相源**：7 个路径、20 个 schema、SSE 事件用 `x-sse-event-types` 描述 |
 | `deploy/init/01_schema.sql` | **M0 数据模型定稿**：三 schema 归属、`jsonb_ops`（不能用 `jsonb_path_ops`）、HNSW 参数、outbox |
 | `deploy/smoke/01_acl_smoke.sql` | ACL 冒烟 4 项断言：public / 部门祖先链 / 审批例外 / 空数组边界 |

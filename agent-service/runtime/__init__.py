@@ -452,6 +452,7 @@ __all__ = [
     "Settings",
     "build_runtime",
     "new_run_context",
+    "current_context",
     "acl_fingerprint",
     "CostModel",
     "Usage",

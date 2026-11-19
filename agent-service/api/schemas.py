@@ -209,6 +209,14 @@ class Citation(BaseModel):
             description='引用时刻该文档的权限版本；与当前值不一致则置灰"原文已失权"（docs/07 §3.3）。'
         ),
     ] = None
+    chunk_id: Annotated[
+        str | None,
+        Field(description='chunk 唯一标识，用于前端按需拉取原文预览。'),
+    ] = None
+    content: Annotated[
+        str | None,
+        Field(description='该 chunk 的原文内容，供前端引用抽屉直接展示，避免额外请求。'),
+    ] = None
 
 
 class Usage(BaseModel):

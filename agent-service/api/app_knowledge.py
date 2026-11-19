@@ -16,7 +16,7 @@ import threading
 import traceback
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -24,6 +24,7 @@ SERVICE_ROOT = Path(__file__).resolve().parent.parent
 if str(SERVICE_ROOT) not in sys.path:
     sys.path.insert(0, str(SERVICE_ROOT))
 
+import a2a  # noqa: E402  跨域调用的唯一通道（docs/13 §8）
 from api import http as http_util  # noqa: E402
 from api.replay import ReplayCache, idempotency_key  # noqa: E402
 from api.schemas import AnswerRequest, Code, FinishReason  # noqa: E402
@@ -225,6 +226,118 @@ def create_app(settings: Settings | None = None, *, domain_dir: Path | None = No
             headers={**SSE_HEADERS, **({"X-Degraded": degraded_header} if degraded_header else {})},
         )
 
+    # ------------------------------------------------------------------ 文档入库
+    # 上传文件 → 临时落盘 → 复用 retrieval.pg_ingest.ingest_path 解析+分块+写库。
+    # 切片参数（child_size/parent_size/overlap/strategy）由前端透传，缺省用 ChunkConfig 默认。
+    @app.post("/v1/knowledge/documents")
+    async def upload_document(
+        file: UploadFile = File(...),
+        child_size: int = Form(320),
+        parent_size: int = Form(1200),
+        overlap: int = Form(60),
+        strategy: str = Form("semantic"),
+        acl_mode: str = Form("public"),
+    ) -> JSONResponse:
+        # 后缀白名单：与 parse 路由支持的格式对齐，避免把任意字节丢进解析器
+        allow = {".md", ".txt", ".pdf", ".docx", ".pptx", ".xlsx", ".markdown"}
+        suffix = Path(file.filename or "").suffix.lower()
+        if suffix not in allow:
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"不支持的文件类型 {suffix or '(无后缀)'}", "allow": sorted(allow)},
+            )
+
+        # 临时落盘：解析引擎依赖真实文件路径（PDF 走 PyMuPDF、office 走 Docling）
+        import tempfile
+        import uuid
+
+        from parse.chunker import ChunkConfig
+        from retrieval import pg_ingest
+        from retrieval.dsn import pg_dsn
+
+        dsn = pg_dsn()
+        if not dsn:
+            return JSONResponse(
+                status_code=503,
+                content={"error": "数据库未配置，无法入库（检查 config/.env 的 POSTGRES_*）"},
+            )
+
+        # 校验切片参数范围，防止越界值把分块搞坏
+        try:
+            cfg = ChunkConfig(
+                strategy=strategy if strategy in ("semantic",) else "semantic",
+                child_size=max(50, min(int(child_size), 4000)),
+                parent_size=max(100, min(int(parent_size), 8000)),
+                overlap=max(0, min(int(overlap), 500)),
+            )
+        except (TypeError, ValueError):
+            return JSONResponse(status_code=400, content={"error": "切片参数必须是整数"})
+
+        # acl：本期只支持 public / dept，前端默认 public（全员可见）
+        acl: dict[str, object]
+        if acl_mode == "public":
+            acl = {"v": "public", "depts": [], "roles": [], "groups": [], "acl_epoch": 1}
+        elif acl_mode == "dept":
+            acl = {"v": "scoped", "depts": ["D10"], "roles": [], "groups": [], "acl_epoch": 1}
+        else:
+            return JSONResponse(status_code=400, content={"error": "acl_mode 只支持 public / dept"})
+
+        # 落盘到临时目录，用真实文件名（保留后缀供解析器路由）
+        tmpdir = tempfile.mkdtemp(prefix="knowops_upload_")
+        tmp_path = Path(tmpdir) / (Path(file.filename or "doc.txt").name)
+        data = await file.read()
+        tmp_path.write_bytes(data)
+
+        try:
+            import psycopg
+
+            did = f"up-{uuid.uuid4().hex[:12]}"
+            with psycopg.connect(dsn) as conn:
+                rep = pg_ingest.ingest_path(
+                    conn,
+                    tmp_path,
+                    doc_id=did,
+                    title=Path(file.filename or did).stem,
+                    acl=acl,
+                    embed=True,
+                    chunk_cfg=cfg,
+                )
+                conn.commit()
+        except Exception as exc:  # noqa: BLE001
+            return JSONResponse(
+                status_code=500,
+                content={"error": f"入库失败：{type(exc).__name__}: {exc}"},
+            )
+        finally:
+            # 清理临时文件（尽力而为）
+            try:
+                import shutil
+
+                shutil.rmtree(tmpdir, ignore_errors=True)
+            except Exception:
+                pass
+
+        if rep.error:
+            return JSONResponse(status_code=422, content={"error": rep.error, "doc_id": rep.doc_id})
+
+        return JSONResponse(
+            content={
+                "ok": True,
+                "doc_id": rep.doc_id,
+                "title": rep.title,
+                "parents": rep.parents,
+                "children": rep.children,
+                "embedded": rep.embedded,
+                "acl": rep.acl,
+                "chunk": {
+                    "strategy": cfg.strategy,
+                    "child_size": cfg.child_size,
+                    "parent_size": cfg.parent_size,
+                    "overlap": cfg.overlap,
+                },
+            }
+        )
+
     # ------------------------------------------------------------------ 调试
     if settings.debug_endpoints:
 
@@ -259,9 +372,83 @@ def create_app(settings: Settings | None = None, *, domain_dir: Path | None = No
                     return JSONResponse(content=run)
             return JSONResponse(status_code=404, content={"error": "run not found", "key": key})
 
+    # ------------------------------------------------------------------ A2A
+    # 知识域作为**被调方**：排障域诊断到"该不该赔/该走哪个流程"时，来查文档原文。
+    # 与排障域挂的是同一个 mount，只是 handler 不同——协议层不认识文档，也不该认识。
+    def run_answer(question: str, scope: dict, subject) -> dict:
+        import time
+        import uuid
+
+        started = time.perf_counter()
+        sink = EventSink(
+            lambda *_: None,
+            trace_id=tracing.current_trace_id() or "a2a",
+            contract_version=settings.contract_version,
+            config_version="cfg-a2a",
+            prompt_set_sha=rt.prompt_set_sha,
+            acl_fingerprint=acl_fingerprint(subject),
+        )
+        ledger = rt.new_ledger(deadline_ms=settings.default_deadline_ms)
+        ctx = new_run_context(
+            domain=rt.pack.name,
+            sink=sink,
+            ledger=ledger,
+            subject=subject,
+            session_id=f"a2a-{uuid.uuid4().hex[:8]}",
+            config_version="cfg-a2a",
+            task_id=f"a2a_{uuid.uuid4().hex[:8]}",
+        )
+        # 防环：把上游的委派链带进上下文。agentic 图本身不委派，但 pipeline 图会走
+        # `maybe_delegate`，它据此判断"这一跳还能不能往外发"，避免 A→B→A 无限套娃。
+        ctx.scratch["delegation_chain"] = a2a.chain_of(scope)
+
+        with rt.use(ctx):
+            result = rt.run_graph(graph, {"query": question},
+                                  thread_id=f"a2a-{uuid.uuid4().hex[:8]}")
+        state = result.state or {}
+        answer = str(state.get("answer") or "")
+
+        # `answer` 单独给，不塞进 text：调用方靠它判断"真答了"还是"弃答"。
+        # 弃答时 state 仍是 COMPLETED，只有 answer 为空 —— 这正是 `required_key`
+        # 存在的理由，否则一次 abstain 会被当成"查到条款了"。
+        return {
+            "state": "TASK_STATE_INPUT_REQUIRED" if result.paused else "TASK_STATE_COMPLETED",
+            "data": {
+                "answer": answer,
+                "citations": state.get("citations") or [],
+                "finish_reason": str(state.get("finish_reason") or ""),
+                "evidence_count": len(state.get("evidence") or []),
+            },
+            "text": answer,
+            "status_message": str(state.get("stop_reason") or ""),
+            "elapsed_ms": round((time.perf_counter() - started) * 1000, 1),
+            "usage": ledger.usage().model_dump(mode="json"),
+        }
+
+    a2a.mount(
+        app,
+        card=a2a.AgentCard(
+            id=a2a.SOURCE_KNOWLEDGE,
+            name="knowledge-agent",
+            description="制度与操作手册问答：带引用的检索式回答（权限在检索前下推）",
+            url=f"http://127.0.0.1:{settings.port}" if hasattr(settings, "port") else "http://127.0.0.1:8001",
+            version=settings.service_version,
+            skills=[
+                a2a.Skill(
+                    id=a2a.ANSWER_SKILL,
+                    name="制度条款问答",
+                    description="输入自然语言问题与最小 scope，返回带引用的答案；证据不足时 answer 为空（弃答）。",
+                )
+            ],
+        ),
+        handler=run_answer,
+    )
+
     # ------------------------------------------------------------------ 演示页
     # 挂最后：Starlette 按注册顺序匹配，前面定义的路由优先，这里只兜底静态资源。
+    # 注意顺序坑：/app 必须注册在 "/" 之前，否则根 mount 会把 /app 吞掉。
     if WEB_ROOT.is_dir():
+        app.mount("/app", StaticFiles(directory=str(WEB_ROOT / "app"), html=True), name="toc")
         app.mount("/", StaticFiles(directory=str(WEB_ROOT), html=True), name="web")
 
     return app

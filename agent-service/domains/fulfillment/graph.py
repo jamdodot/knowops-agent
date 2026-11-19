@@ -66,7 +66,7 @@ def build(rt: Runtime):
         {"compose": "compose_diagnosis", "refine": "refine", "escalate": "escalate"},
     )
     g.edge("refine", "build_hypotheses")
-    g.edge("compose_diagnosis", "propose_action")
+    g.route("compose_diagnosis", _after_compose, {"propose": "propose_action", "end": "END"})
     g.route("propose_action", _after_propose, {"approve": "human_approve", "end": "END"})
     g.route("human_approve", _after_approve, {"end": "END", "escalate": "escalate"})
     g.edge("escalate", "END")
@@ -83,7 +83,11 @@ def _refine(state: State, rt: Runtime) -> dict[str, Any]:
 
 def _need_clarify(state: State) -> str:
     fields = state.get("fields") or {}
-    return "go" if fields.get("order_id") else "clarify"
+    oid = str(fields.get("order_id") or "").strip()
+    # 空或格式不对都进 clarify 追问，避免带病取证（格式错 → 工具 schema 校验失败 → 全空转）。
+    if not oid or not nodes._ORDER_ID_RE.match(oid):
+        return "clarify"
+    return "go"
 
 
 def _after_clarify(state: State) -> str:
@@ -103,6 +107,11 @@ def _after_evaluate(rt: Runtime):
         return "escalate"
 
     return route
+
+
+def _after_compose(state: State) -> str:
+    # 查无此单等 abstained 场景：诊断已给出明确结论，不再提议动作（无从下手）。
+    return "end" if state.get("finish_reason") == "abstained" else "propose"
 
 
 def _after_propose(state: State) -> str:

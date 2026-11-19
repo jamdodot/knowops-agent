@@ -88,12 +88,12 @@ prompts:
 
   - id: fulfillment.build_hypotheses
     path: prompts/fulfillment/build_hypotheses.md
-    version: 2
+    version: 4
     role: plan
     owner: ai-platform
     variables: [symptom, similar_cases]
     gate: full
-    template_sha256: "6029b9ae065deef55fc71ade4156c40e1a9a978af588d599f989afab7e80346e"
+    template_sha256: "71615a4f6b535a81009d93f86f007ab20eb40a69297a4f2c1c5b4ccc53d93228"
 
   - id: fulfillment.evaluate
     path: prompts/fulfillment/evaluate.md

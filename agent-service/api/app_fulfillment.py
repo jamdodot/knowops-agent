@@ -362,16 +362,25 @@ def create_app(settings: Settings | None = None, *, domain_dir: Path | None = No
             config_version="cfg-a2a",
             task_id=f"a2a_{uuid.uuid4().hex[:8]}",
         )
+        # 防环：把上游的委派链带进上下文。被调进来时若还要再发起委派
+        # （诊断到一半去查条款），`ask_knowledge` 据此先判一次，
+        # 免得发一个注定被对端拒掉的请求。
+        ctx.scratch["delegation_chain"] = a2a.chain_of(scope)
         with rt.use(ctx):
             result = rt.run_graph(graph, {"symptom": symptom, "diagnose_only": True},
                                   thread_id=f"a2a-{uuid.uuid4().hex[:8]}")
         state = result.state or {}
+        diagnosis = str(state.get("diagnosis") or "")
         return {
             "state": "TASK_STATE_INPUT_REQUIRED" if result.paused else "TASK_STATE_COMPLETED",
-            "root_cause": state.get("root_cause"),
-            "confidence": state.get("confidence"),
-            "diagnosis": state.get("diagnosis"),
-            "hypotheses": [h.get("root_cause") for h in (state.get("hypotheses") or [])],
+            # 标准形状（见 a2a/server.py 模块注释）：data 进结构化 artifact，
+            # text 进文本 artifact。服务端不解释 root_cause 是什么。
+            "data": {
+                "root_cause": state.get("root_cause"),
+                "confidence": state.get("confidence"),
+                "hypotheses": [h.get("root_cause") for h in (state.get("hypotheses") or [])],
+            },
+            "text": diagnosis,
             "status_message": str(state.get("stop_reason") or ""),
             "elapsed_ms": round((time.perf_counter() - started) * 1000, 1),
             "usage": ledger.usage().model_dump(mode="json"),
@@ -380,19 +389,20 @@ def create_app(settings: Settings | None = None, *, domain_dir: Path | None = No
     a2a.mount(
         app,
         card=a2a.AgentCard(
+            id=a2a.SOURCE_FULFILLMENT,
             name="fulfillment-agent",
             description="订单履约排障：假设验证式根因诊断（只读数据源 + SQL Guard）",
             url=f"http://127.0.0.1:{settings.port}" if hasattr(settings, "port") else "http://127.0.0.1:8002",
             version=settings.service_version,
             skills=[
                 a2a.Skill(
-                    id="diagnose_order_symptom",
+                    id=a2a.DIAGNOSE_SKILL,
                     name="订单履约诊断",
                     description="输入症状描述（含订单号）与最小 scope，返回根因结论与置信度。只诊断不执行动作。",
                 )
             ],
         ),
-        run_symptom=run_symptom,
+        handler=run_symptom,
     )
 
     return app

@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="color-scheme" content="light dark" />
+  <title>KnowOps · 智能问答</title>
+  <link rel="stylesheet" href="./app.css" />
+</head>
+<body>
+  <!-- 侧栏遮罩（移动端点击关闭侧栏） -->
+  <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
+
+  <!-- 左侧会话侧栏 -->
+  <aside class="sidebar" id="sidebar" aria-label="会话历史">
+    <div class="sidebar-head">
+      <span class="sidebar-logo" aria-hidden="true"></span>
+      <span class="sidebar-title">KnowOps</span>
+      <button class="sidebar-collapse" id="sidebarCollapse" title="收起侧栏" aria-label="收起侧栏">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6 3 3 8l3 5M9 3l3 5-3 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+
+    <button class="new-chat-btn" id="newChatBtn">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <span>新对话</span>
+    </button>
+
+    <nav class="session-list" id="sessionList" aria-label="会话列表"></nav>
+
+    <div class="sidebar-foot">
+      <span class="foot-dot" id="footDot"></span>
+      <span class="foot-text" id="footText">检查服务中…</span>
+    </div>
+  </aside>
+
+  <!-- 主区域 -->
+  <div class="main">
+    <!-- 顶栏 -->
+    <header class="topbar">
+      <button class="sidebar-toggle" id="sidebarToggle" title="展开侧栏" aria-label="展开侧栏">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 4.5h12M3 9h12M3 13.5h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+      <div class="topbar-mode" id="topbarMode">知识检索</div>
+      <div class="topbar-actions">
+        <button class="topbar-new" id="topbarNewBtn" title="新对话">新对话</button>
+        <button class="topbar-upload" id="topbarUploadBtn" title="新增文档到知识库">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 2v8M4 6l4-4 4 4M3 12h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          新增文档
+        </button>
+        <div class="identity-menu" id="identityMenu">
+          <button class="identity-chip" id="identityChip" aria-haspopup="true" aria-expanded="false" title="切换演示身份">
+            <span class="identity-chip-role" id="identityChipRole">员工</span>
+            <span class="identity-chip-user" id="identityChipUser">u_2048</span>
+            <svg class="identity-caret" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <div class="identity-dropdown" id="identityDropdown" hidden></div>
+        </div>
+      </div>
+    </header>
+
+    <!-- 内容区 -->
+    <main class="content" id="content">
+      <!-- 空态 -->
+      <section class="hero" id="hero">
+        <div class="hero-inner">
+          <h1 class="hero-title">有什么可以帮你？</h1>
+          <p class="hero-sub">查制度、查流程、排故障，答案都带原文出处</p>
+
+          <div class="composer" id="composer">
+            <div class="composer-box">
+              <button class="composer-plus" id="uploadBtn" disabled title="即将支持" aria-label="上传附件">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M9 12V4M6 7l3-3 3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+              <textarea
+                class="composer-input"
+                id="input"
+                rows="1"
+                placeholder="例如：签收异常超过 48 小时该怎么处理？"
+                aria-label="输入问题"
+              ></textarea>
+              <button class="composer-send" id="sendBtn" disabled title="发送" aria-label="发送">
+                <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 9l12-6-4.5 12L8 11 3 9z" fill="currentColor"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="entries" id="entries" role="radiogroup" aria-label="选择入口">
+            <button class="entry-card is-selected" id="entryKnowledge" role="radio" aria-checked="true" tabindex="0">
+              <span class="entry-dot" aria-hidden="true"></span>
+              <span class="entry-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M5 3.5h8.5L17.5 8v10.5H5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M13.5 3.5V8H17.5M8 11h6M8 14h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              </span>
+              <span class="entry-text">
+                <span class="entry-title">知识检索</span>
+                <span class="entry-desc">问制度、问流程、问规范，回答附原文出处</span>
+              </span>
+            </button>
+            <button class="entry-card" id="entryFulfillment" role="radio" aria-checked="false" tabindex="0">
+              <span class="entry-dot" aria-hidden="true"></span>
+              <span class="entry-icon" aria-hidden="true">
+                <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M14.5 3.5a3 3 0 0 1 3 3l-1 5.5a4 4 0 0 1-4 4l-2-1-4 2 2-5a3 3 0 0 1 3-3.5z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>
+              </span>
+              <span class="entry-text">
+                <span class="entry-title">工单排障</span>
+                <span class="entry-desc">描述故障现象，逐步核查并给出处理建议</span>
+              </span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 对话态 -->
+      <section class="chat" id="chat" hidden>
+        <div class="chat-scroll" id="chatScroll">
+          <div class="chat-inner" id="messages"></div>
+        </div>
+
+        <!-- 底部输入条（对话态） -->
+        <div class="chat-composer-wrap">
+          <div class="composer-box chat-composer">
+            <textarea
+              class="composer-input"
+              id="inputBottom"
+              rows="1"
+              placeholder="例如：签收异常超过 48 小时该怎么处理？"
+              aria-label="输入问题"
+            ></textarea>
+            <button class="composer-send" id="sendBtnBottom" disabled title="发送" aria-label="发送">
+              <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M3 9l12-6-4.5 12L8 11 3 9z" fill="currentColor"/></svg>
+            </button>
+          </div>
+          <div class="composer-hint">Enter 发送 · Shift+Enter 换行</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- 引用详情抽屉 -->
+  <div class="drawer-backdrop" id="drawerBackdrop" hidden></div>
+  <aside class="drawer" id="drawer" aria-label="引用详情" aria-hidden="true">
+    <div class="drawer-head">
+      <span class="drawer-title" id="drawerTitle">引用</span>
+      <button class="drawer-close" id="drawerClose" title="关闭" aria-label="关闭">
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M5 5l8 8M13 5l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="drawer-body">
+      <h2 class="drawer-doc-title" id="drawerDocTitle"></h2>
+      <p class="drawer-doc-loc" id="drawerDocLoc"></p>
+      <div class="drawer-preview" id="drawerPreview"></div>
+    </div>
+    <div class="drawer-foot">
+      <button class="drawer-action" id="drawerCopy">复制引用信息</button>
+      <a class="drawer-action drawer-open" id="drawerOpen" target="_blank" rel="noopener" hidden>打开原文 ↗</a>
+    </div>
+  </aside>
+
+  <!-- 新增文档弹窗 -->
+  <div class="modal-backdrop" id="uploadModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="uploadTitle">
+      <div class="modal-head">
+        <span class="modal-title" id="uploadTitle">新增文档到知识库</span>
+        <button class="modal-close" id="uploadClose" title="关闭" aria-label="关闭">
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M5 5l8 8M13 5l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <!-- 文件选择 -->
+        <div class="upload-drop" id="uploadDrop">
+          <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><path d="M14 6v12M8 12l6-6 6 6M6 20h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <p class="upload-drop-text">拖拽文件到此处，或点击选择</p>
+          <p class="upload-drop-hint">支持 .md / .txt / .pdf / .docx / .pptx / .xlsx</p>
+          <input type="file" id="uploadFile" accept=".md,.markdown,.txt,.pdf,.docx,.pptx,.xlsx" hidden />
+        </div>
+        <div class="upload-file" id="uploadFileInfo" hidden>
+          <span class="upload-file-name" id="uploadFileName"></span>
+          <button class="upload-file-remove" id="uploadFileRemove" title="移除">✕</button>
+        </div>
+
+        <!-- 切片参数 -->
+        <fieldset class="chunk-fields">
+          <legend>切片参数</legend>
+          <div class="chunk-grid">
+            <label class="chunk-field">
+              <span class="chunk-label">子块大小 (token)</span>
+              <input type="number" id="chunkChildSize" value="320" min="50" max="4000" step="10" />
+              <span class="chunk-tip">检索单元，200~400 精准召回</span>
+            </label>
+            <label class="chunk-field">
+              <span class="chunk-label">重叠 (token)</span>
+              <input type="number" id="chunkOverlap" value="60" min="0" max="500" step="10" />
+              <span class="chunk-tip">相邻子块重叠量，防语义切断</span>
+            </label>
+            <label class="chunk-field">
+              <span class="chunk-label">父块大小 (token)</span>
+              <input type="number" id="chunkParentSize" value="1200" min="100" max="8000" step="100" />
+              <span class="chunk-tip">喂模型的完整上下文块</span>
+            </label>
+            <label class="chunk-field">
+              <span class="chunk-label">权限</span>
+              <select id="chunkAcl">
+                <option value="public">全员可见</option>
+                <option value="dept">仅本部门</option>
+              </select>
+              <span class="chunk-tip">public 所有人可检索，dept 仅 D10</span>
+            </label>
+          </div>
+          <p class="chunk-note">默认采用语义分块 + 父子块（small-to-big）：检索命中子块，回填父块给模型。</p>
+        </fieldset>
+      </div>
+      <div class="modal-foot">
+        <div class="upload-status" id="uploadStatus"></div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="uploadCancel">取消</button>
+          <button class="btn btn-primary" id="uploadSubmit" disabled>上传入库</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 轻提示 -->
+  <div class="toast" id="toast" hidden></div>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
