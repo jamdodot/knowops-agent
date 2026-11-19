@@ -29,6 +29,23 @@ def test_disabled_subject_rejected():
     assert e.value.code == Code.SUBJECT_DISABLED
 
 
+def test_optional_fields_absent_does_not_crash():
+    """可空字段不传时不能 500。
+
+    `approval_doc_ids` 在契约里是可空的（默认 None），但 check_subject 里曾经直接
+    `len(subject.approval_doc_ids)`：页面永远传 `[]` 所以演示看不出来，
+    任何第三方调用方省掉这个字段就收到 500——请求合法、服务崩，最差的一种失败。
+    """
+    g = Guard(GuardCfg())
+    subj = SubjectContext(
+        user_id="u_1", account_status="active", dept_paths=["D10"],
+        roles=["employee"],
+        subject_epoch=1,
+    )
+    assert subj.approval_doc_ids is None
+    assert g.check_subject(subj) == []
+
+
 def test_injection_blocked():
     g = Guard(GuardCfg(injection_check=True))
     with pytest.raises(KwError) as e:

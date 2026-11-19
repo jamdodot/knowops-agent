@@ -66,7 +66,9 @@ class Guard:
         degraded: list[DegradedEnum] = []
         if len(subject.dept_paths) > MAX_DEPT_DEPTH:
             degraded.append(DegradedEnum.acl)
-        if len(subject.approval_doc_ids) > MAX_APPROVALS:
+        # 契约里 approval_doc_ids 是可空字段（默认 None）。直接 len() 会让
+        # "没传这个字段"的调用方收到 500——那是请求合法、服务崩了，最差的组合。
+        if len(subject.approval_doc_ids or ()) > MAX_APPROVALS:
             degraded.append(DegradedEnum.acl)
         return degraded
 
